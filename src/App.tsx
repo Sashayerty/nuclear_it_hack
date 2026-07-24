@@ -1,0 +1,57 @@
+import { useAppDispatch, useAppSelector } from './store/hooks'
+import type { RootState } from './store'
+import { setCategory, setSearchQuery } from './store/slices/filterSlice'
+import { addNotification } from './store/slices/appSlice'
+
+function App() {
+  const dispatch = useAppDispatch()
+  const filter = useAppSelector((state: RootState) => state.filter)
+  const notifications = useAppSelector((state: RootState) => state.app.notifications)
+
+
+  const categories = ['Генерация текста', 'Помощь с кодом', 'Анализ данных / SQL', 'Объяснение / Обучение', 'Поиск / Сбор информации']
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-8 font-sans">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <header className="border-b border-slate-800 pb-4">
+          <h1 className="text-3xl font-bold text-sky-400">Промпт-Радар: ИИ Аналитика</h1>
+          <p className="text-slate-400 mt-1">Redux Toolkit + React Query + Axios</p>
+        </header>
+
+        <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-lg space-y-4">
+          <h2 className="text-xl font-semibold text-slate-200">Фильтры (Redux Store State)</h2>
+          <div className="flex flex-wrap gap-2">
+            <span className="text-sm text-slate-400 self-center mr-2">Категория:</span>
+            <button onClick={() => dispatch(setCategory(null))} className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filter.selectedCategory === null ? 'bg-sky-600 text-white font-medium' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>Все</button>
+            {categories.map((cat) => (
+              <button key={cat} onClick={() => dispatch(setCategory(cat))} className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filter.selectedCategory === cat ? 'bg-sky-600 text-white font-medium' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>{cat}</button>
+            ))}
+          </div>
+
+          <div className="flex gap-4 items-center pt-2">
+            <input type="text" placeholder="Поиск по промптам..." value={filter.searchQuery} onChange={(e) => dispatch(setSearchQuery(e.target.value))} className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 flex-1" />
+            <button onClick={() => dispatch(addNotification({ type: 'info', message: `Фильтры обновлены: ${filter.selectedCategory || 'Все категории'}` }))} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Уведомление</button>
+          </div>
+        </section>
+
+        <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-lg space-y-3">
+          <h3 className="text-lg font-semibold text-slate-300">Текущее состояние Redux</h3>
+          <pre className="bg-slate-950 p-4 rounded-lg text-xs font-mono text-emerald-400 overflow-x-auto border border-slate-800">{JSON.stringify({ filter, notificationCount: notifications.length }, null, 2)}</pre>
+        </section>
+
+        {notifications.length > 0 && (
+          <div className="space-y-2">
+            {notifications.map((n) => (
+              <div key={n.id} className="bg-sky-950 border border-sky-700 text-sky-200 px-4 py-3 rounded-lg text-sm flex justify-between items-center">
+                <span>{n.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default App
