@@ -4,12 +4,14 @@
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from pydantic import BaseModel
+from src.config import CLUSTER_DISTANCE_THRESHOLD
+
 
 class Cluster(BaseModel):
     cluster_id: int
     texts: list[str]
 
-def cluster_requests(texts: list[str], embeddings: np.ndarray, distance_threshold: float = 0.5) -> list[Cluster]:
+def cluster_requests(texts: list[str], embeddings: np.ndarray, distance_threshold: float = CLUSTER_DISTANCE_THRESHOLD) -> list[Cluster]:
     """
     Группирует запросы на основе их векторной близости.
     distance_threshold регулирует "строгость" объединения (чем меньше, тем больше мелких кластеров).

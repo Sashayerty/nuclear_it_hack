@@ -1,4 +1,5 @@
 import json
+from src.config import DEBUG_MODE
 from src.ai import ai_client
 from src.data_processor import filter_logs
 from src.agents.classification import classify_request
@@ -12,14 +13,18 @@ def run_analysis_pipeline(raw_logs: list[str]) -> list[dict]:
     """
     Полный цикл: от сырых логов до готового аналитического отчета по ИИ-агентам.
     """
-    print("1. Очистка данных...")
+    if DEBUG_MODE:
+        print("1. Очистка данных...")
     valid_logs = filter_logs(raw_logs)
 
-    print(f"2. Макро-классификация запросов (всего {len(valid_logs)} шт.)...")
+    if DEBUG_MODE:
+        print(f"2. Макро-классификация запросов (всего {len(valid_logs)} шт.)...")
     categorized_logs = {}
 
     for log in valid_logs:
         classification = classify_request(ai_client, log)
+        if DEBUG_MODE:
+            print(f"  -> Классификация: {classification.categories}")
         main_category = classification.categories[0] if classification.categories else "Другое"
 
         if main_category not in categorized_logs:
@@ -27,13 +32,15 @@ def run_analysis_pipeline(raw_logs: list[str]) -> list[dict]:
         categorized_logs[main_category].append(log)
 
     final_report = []
+    if DEBUG_MODE:
+        print("3. Поиск use-cases и генерация инсайтов...")
 
-    print("3. Поиск use-cases и генерация инсайтов...")
     for category, logs_in_category in categorized_logs.items():
-        print(f"  -> Анализ категории: [{category}] (запросов: {len(logs_in_category)})")
+        if DEBUG_MODE:
+            print(f"  -> Анализ категории: [{category}] (запросов: {len(logs_in_category)})")
 
-        if len(logs_in_category) < 2:
-            continue
+        # if len(logs_in_category) < 2:
+        #     continue
 
         embeddings = get_embeddings(logs_in_category)
         clusters = cluster_requests(logs_in_category, embeddings, distance_threshold=0.5)
@@ -65,6 +72,6 @@ def run_analysis_pipeline(raw_logs: list[str]) -> list[dict]:
             category_data["use_cases"].append(use_case_data)
 
         final_report.append(category_data)
-
-    print("Пайплайн успешно завершен!")
+    if DEBUG_MODE:
+        print("Пайплайн успешно завершен!")
     return final_report

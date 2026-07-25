@@ -54,6 +54,7 @@ class AI:
             "messages": augmented_messages,
             "options": {
                 "temperature": temperature,
+                "num_predict": 4096,
             },
             "think": False,
             "stream": False,
