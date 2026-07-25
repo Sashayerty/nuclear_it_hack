@@ -52,13 +52,17 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             "text",
         )
 
+    print(f"[LOAD] file_format={dataset.file_format}, text_column={text_column}, file_size={len(text)} bytes")
+
     # TXT
     if dataset.file_format == "txt":
-        return [
+        lines = [
             line.strip()
             for line in text.splitlines()
             if line.strip()
         ]
+        print(f"[LOAD] TXT: найдено {len(lines)} строк")
+        return lines
 
     # CSV
     if dataset.file_format == "csv":
@@ -66,14 +70,37 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             StringIO(text)
         )
 
+        # Прочитаем первую строку, чтобы узнать имена колонок
+        rows = list(reader)
+        if rows:
+            available_columns = list(rows[0].keys())
+            print(f"[LOAD] CSV колонки: {available_columns}")
+
+            if text_column not in available_columns:
+                # Автоопределение: ищем подходящую колонку
+                candidates = [
+                    c for c in available_columns
+                    if any(kw in c.lower() for kw in [
+                        "text", "query", "message", "log",
+                        "content", "question", "запрос",
+                        "сообщение", "текст", "prompt",
+                    ])
+                ]
+                if candidates:
+                    text_column = candidates[0]
+                    print(f"[LOAD] Автоопределение: используем колонку '{text_column}'")
+                else:
+                    # Берём первую колонку как fallback
+                    text_column = available_columns[0]
+                    print(f"[LOAD] Fallback: используем первую колонку '{text_column}'")
+
         logs = []
-
-        for row in reader:
+        for row in rows:
             value = row.get(text_column)
-
             if value:
                 logs.append(str(value))
 
+        print(f"[LOAD] CSV: извлечено {len(logs)} записей")
         return logs
 
     if dataset.file_format == "jsonl":
@@ -85,11 +112,24 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
 
             item = json.loads(line)
 
+            if text_column not in item and isinstance(item, dict):
+                candidates = [
+                    k for k in item.keys()
+                    if any(kw in k.lower() for kw in [
+                        "text", "query", "message", "log",
+                        "content", "question", "запрос",
+                        "сообщение", "текст", "prompt",
+                    ])
+                ]
+                if candidates:
+                    text_column = candidates[0]
+
             value = item.get(text_column)
 
             if value:
                 logs.append(str(value))
 
+        print(f"[LOAD] JSONL: извлечено {len(logs)} записей")
         return logs
 
     if dataset.file_format == "json":
@@ -102,6 +142,26 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
 
         logs = []
 
+        if data and isinstance(data[0], dict):
+            available_keys = list(data[0].keys())
+            print(f"[LOAD] JSON ключи: {available_keys}")
+
+            if text_column not in available_keys:
+                candidates = [
+                    k for k in available_keys
+                    if any(kw in k.lower() for kw in [
+                        "text", "query", "message", "log",
+                        "content", "question", "запрос",
+                        "сообщение", "текст", "prompt",
+                    ])
+                ]
+                if candidates:
+                    text_column = candidates[0]
+                    print(f"[LOAD] Автоопределение: используем ключ '{text_column}'")
+                else:
+                    text_column = available_keys[0]
+                    print(f"[LOAD] Fallback: используем первый ключ '{text_column}'")
+
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -111,6 +171,7 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             if value:
                 logs.append(str(value))
 
+        print(f"[LOAD] JSON: извлечено {len(logs)} записей")
         return logs
 
     raise ValueError(
