@@ -1,13 +1,13 @@
 import json
-from src.config import DEBUG_MODE
-from src.ai import ai_client
-from src.data_processor import filter_logs
-from src.agents.classification import classify_request
-from src.ml.embeddings import get_embeddings
-from src.ml.clustering import cluster_requests
-from src.agents.naming import name_cluster
-from src.agents.summary import summarize_cluster
-from src.agents.recommendation import generate_recommendations
+from back.config import DEBUG_MODE
+from back.ai import ai_client
+from back.data_processor import filter_logs
+from back.agents.classification import classify_request
+from back.ml.embeddings import get_embeddings
+from back.ml.clustering import cluster_requests
+from back.agents.naming import name_cluster
+from back.agents.summary import summarize_cluster
+from back.agents.recommendation import generate_recommendations
 
 def run_analysis_pipeline(raw_logs: list) -> list[dict]:
     if DEBUG_MODE:

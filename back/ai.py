@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Type
 import requests
 from pydantic import BaseModel
-from src.config import DEFAULT_MODEL
+from back.config import DEFAULT_MODEL
 
 class AI:
     """

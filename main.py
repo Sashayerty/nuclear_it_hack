@@ -1,8 +1,8 @@
 import pandas as pd
 import json
 import os
-from src.pipeline import run_analysis_pipeline
-from src.config import DEBUG_MODE
+from back.pipeline import run_analysis_pipeline
+from back.config import DEBUG_MODE
 
 
 def main():

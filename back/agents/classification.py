@@ -2,7 +2,7 @@
 Классификация входящих запросов
 '''
 from pydantic import BaseModel, Field
-from src.ai import AI
+from back.ai import AI
 
 class ClassificationResult(BaseModel):
     categories: list[str] = Field(

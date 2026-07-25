@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from src.ai import AI
+from back.ai import AI
 
 class RecommendationResult(BaseModel):
     automation_potential: str = Field(

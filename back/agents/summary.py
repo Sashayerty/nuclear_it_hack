@@ -2,7 +2,7 @@
 Создание саммари
 '''
 from pydantic import BaseModel, Field
-from src.ai import AI
+from back.ai import AI
 
 class SummaryResult(BaseModel):
     description: str = Field(

@@ -2,7 +2,7 @@
 Создание имен для запросов
 '''
 from pydantic import BaseModel, Field
-from src.ai import AI
+from back.ai import AI
 
 class NamingResult(BaseModel):
     use_case_name: str = Field(

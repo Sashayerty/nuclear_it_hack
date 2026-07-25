@@ -4,7 +4,7 @@
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from pydantic import BaseModel
-from src.config import CLUSTER_DISTANCE_THRESHOLD
+from back.config import CLUSTER_DISTANCE_THRESHOLD
 
 
 class Cluster(BaseModel):

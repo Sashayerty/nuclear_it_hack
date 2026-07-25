@@ -3,7 +3,7 @@
 '''
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from src.config import DEBUG_MODE
+from back.config import DEBUG_MODE
 
 MODEL_NAME = "cointegrated/rubert-tiny2"
 if DEBUG_MODE:

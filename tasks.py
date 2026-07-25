@@ -17,7 +17,7 @@ from models import (
 from redis_cache import set_job_status
 from storage import MINIO_BUCKET, minio_client
 
-from src.pipeline import run_analysis_pipeline
+from back.pipeline import run_analysis_pipeline
 
 
 def load_logs_from_minio(dataset: Dataset) -> list[str]:
