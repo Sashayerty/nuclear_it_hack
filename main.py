@@ -7,7 +7,7 @@ def main():
     csv_path = "data/raw/processed_dataset_v3.csv"
 
     if not os.path.exists(csv_path):
-        print(f"❌ Ошибка: Файл {csv_path} не найден!")
+        print(f"Ошибка: Файл {csv_path} не найден!")
         return
 
     print(f"Загрузка данных из {csv_path}...")
@@ -16,7 +16,7 @@ def main():
     text_column = "user_query"
 
     if text_column not in df.columns:
-        print(f"❌ Ошибка: Колонки '{text_column}' нет в CSV. Доступные колонки: {list(df.columns)}")
+        print(f"Ошибка: Колонки '{text_column}' нет в CSV. Доступные колонки: {list(df.columns)}")
         return
 
     raw_logs = df[text_column].dropna().astype(str).tolist()[:100]
