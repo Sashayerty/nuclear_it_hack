@@ -666,6 +666,10 @@ class AnalysisJob(Base):
         Text
     )
 
+    result_data: Mapped[Any | None] = mapped_column(
+        JSONB
+    )
+
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime
     )
