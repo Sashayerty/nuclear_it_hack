@@ -555,6 +555,7 @@ def analyze_dataset(
     )
 
     db = SessionLocal()
+    print('ПРОЙДЕНО ПОСЛЕ DB')
 
     try:
         dataset = db.get(
@@ -633,7 +634,7 @@ def analyze_dataset(
                     job.id,
                 )
             )
-
+        print('TASK ПРОШЕЛ')
         except Exception as exc:
             job.status = JobStatus.failed
 
