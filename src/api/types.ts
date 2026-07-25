@@ -91,10 +91,19 @@ export interface BrokenQueryInfo {
 export interface UseCaseReport {
   use_case_name: string
   queries_count: number
-  pain_points: string[]
-  automation_potential: string
-  suggested_actions: string[]
-  broken_queries?: BrokenQueryInfo[]
+  examples?: string[]
+  description?: string
+  typical_phrases?: string[]
+  pain_points?: string[]
+  broken_queries?: (string | BrokenQueryInfo)[]
+  automation_potential?: string
+  suggested_actions?: string | string[]
+  total_tokens_used?: number
+  total_cost_rub?: number
+  avg_cost_per_query_rub?: number
+  dominant_department?: string
+  estimated_time_saved?: string
+  estimated_money_saved?: string
 }
 
 export interface CategoryReport {

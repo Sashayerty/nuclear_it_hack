@@ -219,16 +219,24 @@ export const DashboardPage = () => {
                   <div className="text-[11px] text-slate-500">
                     Запросов: <strong className="text-slate-800">{ac.requests}</strong>
                   </div>
-                  {ac.suggested_actions && ac.suggested_actions.length > 0 && (
-                    <div className="pt-1 border-t border-blue-100/60">
-                      <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Действие:</div>
-                      <ul className="text-[11px] text-slate-700 list-disc list-inside space-y-0.5">
-                        {ac.suggested_actions.map((act, actIdx) => (
-                          <li key={actIdx}>{act}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {(() => {
+                    const actions = Array.isArray(ac.suggested_actions)
+                      ? ac.suggested_actions
+                      : ac.suggested_actions
+                      ? [ac.suggested_actions]
+                      : []
+                    if (actions.length === 0) return null
+                    return (
+                      <div className="pt-1 border-t border-blue-100/60">
+                        <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">Действие:</div>
+                        <ul className="text-[11px] text-slate-700 list-disc list-inside space-y-0.5">
+                          {actions.map((act, actIdx) => (
+                            <li key={actIdx}>{act}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
