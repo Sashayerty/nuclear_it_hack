@@ -31,11 +31,31 @@ from storage import (
     minio_client,
 )
 from typing import Any
+from tasks import process_dataset_analysis_task
+
+from redis_cache import (
+    cache_dashboard,
+    get_cached_dashboard,
+    get_job_status,
+    redis_client as cache_redis,
+    set_job_status,
+)
+from sqlalchemy import text
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE EXTENSION IF NOT EXISTS vector"
+            )
+        )
+
+    Base.metadata.create_all(
+        bind=engine
+    )
+
     ensure_bucket()
 
     yield
@@ -434,12 +454,10 @@ def upload_dataset(
             detail="Разрешены CSV, JSON, JSONL и TXT",
         )
 
-    # Узнаём размер файла
     file.file.seek(0, 2)
     file_size = file.file.tell()
     file.file.seek(0)
 
-    # Уникальный путь внутри MinIO
     object_name = (
         f"organizations/"
         f"{organization.id}/"
@@ -515,186 +533,15 @@ def upload_dataset(
     finally:
         db.close()
 
-
-def process_dataset_analysis(
-    dataset_id: int,
-    analysis_run_id: int,
-    job_id: int,
-):
-    from datetime import datetime, timezone
-
-    from dataset_reader import extract_logs
-
-    from models import (
-        AnalysisJob,
-        AnalysisRun,
-        AnalysisStatus,
-        Dataset,
-        DatasetStatus,
-        JobStatus,
-    )
-
-    def now():
-        return datetime.now(
-            timezone.utc
-        ).replace(tzinfo=None)
-
-    db = SessionLocal()
-
-    try:
-        dataset = db.get(
-            Dataset,
-            dataset_id,
-        )
-
-        analysis_run = db.get(
-            AnalysisRun,
-            analysis_run_id,
-        )
-
-        job = db.get(
-            AnalysisJob,
-            job_id,
-        )
-
-        if (
-            dataset is None
-            or analysis_run is None
-            or job is None
-        ):
-            return
-
-        # Начинаем обработку
-
-        dataset.status = DatasetStatus.processing
-
-        analysis_run.status = AnalysisStatus.processing
-        analysis_run.started_at = now()
-
-        job.status = JobStatus.processing
-        job.progress = 10
-        job.started_at = now()
-
-        db.commit()
-
-
-        prefix = f"s3://{MINIO_BUCKET}/"
-
-        if not dataset.file_uri.startswith(prefix):
-            raise RuntimeError(
-                "Некорректный file_uri датасета"
-            )
-
-        object_name = dataset.file_uri[
-            len(prefix):
-        ]
-
-        response = minio_client.get_object(
-            MINIO_BUCKET,
-            object_name,
-        )
-
-        try:
-            file_bytes = response.read()
-
-        finally:
-            response.close()
-            response.release_conn()
-
-        job.progress = 25
-        db.commit()
-
-
-        text_column = (
-            dataset.column_mapping or {}
-        ).get(
-            "text_column",
-            "text",
-        )
-
-        raw_logs = extract_logs(
-            data=file_bytes,
-            file_format=dataset.file_format,
-            text_column=text_column,
-        )
-
-        if not raw_logs:
-            raise RuntimeError(
-                "В датасете нет запросов для анализа"
-            )
-
-        dataset.rows_count = len(raw_logs)
-
-        job.progress = 35
-        db.commit()
-
-
-        from src.pipeline import run_analysis_pipeline
-
-        report = run_analysis_pipeline(
-            raw_logs
-        )
-
-        job.progress = 90
-        db.commit()
-
-        job.result_data = report
-
-        job.status = JobStatus.completed
-        job.progress = 100
-        job.finished_at = now()
-
-        analysis_run.status = AnalysisStatus.completed
-        analysis_run.finished_at = now()
-
-        dataset.status = DatasetStatus.completed
-        dataset.processed_at = now()
-
-        db.commit()
-
-    except Exception as exc:
-        db.rollback()
-
-        dataset = db.get(
-            Dataset,
-            dataset_id,
-        )
-
-        analysis_run = db.get(
-            AnalysisRun,
-            analysis_run_id,
-        )
-
-        job = db.get(
-            AnalysisJob,
-            job_id,
-        )
-
-        if dataset is not None:
-            dataset.status = DatasetStatus.failed
-
-        if analysis_run is not None:
-            analysis_run.status = AnalysisStatus.failed
-            analysis_run.finished_at = now()
-
-        if job is not None:
-            job.status = JobStatus.failed
-            job.error_message = str(exc)
-            job.finished_at = now()
-
-        db.commit()
-
-    finally:
-        db.close()
-
 @app.post(
     "/datasets/{dataset_id}/analyze",
     status_code=202,
 )
 def analyze_dataset(
     dataset_id: int,
-    background_tasks: BackgroundTasks,
-    organization=Depends(get_current_organization),
+    organization=Depends(
+        get_current_organization
+    ),
 ):
     from models import (
         AnalysisJob,
@@ -715,18 +562,20 @@ def analyze_dataset(
 
         if (
             dataset is None
-            or dataset.organization_id != organization.id
+            or dataset.organization_id
+            != organization.id
         ):
             raise HTTPException(
                 status_code=404,
                 detail="Датасет не найден",
             )
 
-        # Проверяем, не идёт ли анализ уже сейчас
         active_run = (
             db.query(AnalysisRun)
             .filter(
-                AnalysisRun.dataset_id == dataset.id,
+                AnalysisRun.dataset_id
+                == dataset.id,
+
                 AnalysisRun.status.in_([
                     AnalysisStatus.pending,
                     AnalysisStatus.processing,
@@ -738,22 +587,26 @@ def analyze_dataset(
         if active_run is not None:
             raise HTTPException(
                 status_code=409,
-                detail="Этот датасет уже анализируется",
+                detail=(
+                    "Этот датасет уже анализируется"
+                ),
             )
 
         analysis_run = AnalysisRun(
             dataset_id=dataset.id,
             status=AnalysisStatus.pending,
-            embedding_model="cointegrated/rubert-tiny2",
-            clustering_algorithm="AgglomerativeClustering",
+            embedding_model=(
+                "cointegrated/rubert-tiny2"
+            ),
+            clustering_algorithm=(
+                "AgglomerativeClustering"
+            ),
             config={
                 "distance_threshold": 0.5,
             },
         )
 
         db.add(analysis_run)
-
-        # Нужен ID до commit
         db.flush()
 
         job = AnalysisJob(
@@ -769,36 +622,83 @@ def analyze_dataset(
         db.refresh(analysis_run)
         db.refresh(job)
 
-        background_tasks.add_task(
-            process_dataset_analysis,
-            dataset.id,
-            analysis_run.id,
+
+        try:
+            task = (
+                process_dataset_analysis_task.delay(
+                    dataset.id,
+                    analysis_run.id,
+                    job.id,
+                )
+            )
+
+        except Exception as exc:
+            job.status = JobStatus.failed
+
+            job.error_message = (
+                f"Ошибка постановки задачи "
+                f"в очередь: {exc}"
+            )
+
+            analysis_run.status = (
+                AnalysisStatus.failed
+            )
+
+            db.commit()
+
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Не удалось поставить "
+                    "анализ в очередь"
+                ),
+            )
+
+        job.external_task_id = task.id
+
+        db.commit()
+
+        set_job_status(
             job.id,
+            "pending",
+            0,
         )
 
         return {
-            "analysis_run_id": analysis_run.id,
-            "job_id": job.id,
-            "dataset_id": dataset.id,
-            "status": "pending",
-            "progress": 0,
+            "analysis_run_id":
+                analysis_run.id,
+
+            "job_id":
+                job.id,
+
+            "task_id":
+                task.id,
+
+            "dataset_id":
+                dataset.id,
+
+            "status":
+                "pending",
+
+            "progress":
+                0,
         }
 
     except HTTPException:
         db.rollback()
         raise
 
-    except Exception:
-        db.rollback()
-        raise
-
     finally:
         db.close()
 
-@app.get("/analysis-runs/{analysis_run_id}")
+@app.get(
+    "/analysis-runs/{analysis_run_id}"
+)
 def get_analysis_status(
     analysis_run_id: int,
-    organization=Depends(get_current_organization),
+    organization=Depends(
+        get_current_organization
+    ),
 ):
     from models import (
         AnalysisJob,
@@ -826,11 +726,10 @@ def get_analysis_status(
             analysis_run.dataset_id,
         )
 
-        # Не даём компании смотреть
-        # чужой анализ
         if (
             dataset is None
-            or dataset.organization_id != organization.id
+            or dataset.organization_id
+            != organization.id
         ):
             raise HTTPException(
                 status_code=404,
@@ -849,35 +748,69 @@ def get_analysis_status(
             .first()
         )
 
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Задача анализа не найдена",
+            )
+
+
+
+        cached = get_job_status(
+            job.id
+        )
+
+        if cached is not None:
+            job_status = cached["status"]
+            progress = cached["progress"]
+            error = cached["error"]
+
+        else:
+
+
+            job_status = job.status.value
+            progress = job.progress
+            error = job.error_message
+
+            set_job_status(
+                job.id,
+                job_status,
+                progress,
+                error,
+            )
+
         return {
-            "analysis_run_id": analysis_run.id,
-            "dataset_id": dataset.id,
-            "status": analysis_run.status.value,
+            "analysis_run_id":
+                analysis_run.id,
+
+            "dataset_id":
+                dataset.id,
+
+            "status":
+                analysis_run.status.value,
 
             "job": {
-                "id": job.id if job else None,
+                "id":
+                    job.id,
 
-                "status": (
-                    job.status.value
-                    if job
-                    else None
-                ),
+                "task_id":
+                    job.external_task_id,
 
-                "progress": (
-                    job.progress
-                    if job
-                    else None
-                ),
+                "status":
+                    job_status,
 
-                "error": (
-                    job.error_message
-                    if job
-                    else None
-                ),
+                "progress":
+                    progress,
+
+                "error":
+                    error,
             },
 
-            "started_at": analysis_run.started_at,
-            "finished_at": analysis_run.finished_at,
+            "started_at":
+                analysis_run.started_at,
+
+            "finished_at":
+                analysis_run.finished_at,
         }
 
     finally:
@@ -915,7 +848,6 @@ def get_dataset_report(
                 detail="Датасет не найден",
             )
 
-        # Последний успешно завершённый анализ
         analysis_run = (
             db.query(AnalysisRun)
             .filter(
@@ -1158,7 +1090,9 @@ def build_dashboard(
 
 @app.get("/dashboard")
 def get_dashboard(
-    organization=Depends(get_current_organization),
+    organization=Depends(
+        get_current_organization
+    ),
 ):
     from models import (
         AnalysisJob,
@@ -1168,6 +1102,17 @@ def get_dashboard(
         JobStatus,
         JobType,
     )
+
+
+
+    cached_dashboard = (
+        get_cached_dashboard(
+            organization.id
+        )
+    )
+
+    if cached_dashboard is not None:
+        return cached_dashboard
 
     db = SessionLocal()
 
@@ -1210,7 +1155,11 @@ def get_dashboard(
         seen_datasets = set()
         reports = []
 
-        for dataset, analysis_run, job in rows:
+        for (
+            dataset,
+            analysis_run,
+            job,
+        ) in rows:
 
             if dataset.id in seen_datasets:
                 continue
@@ -1226,8 +1175,10 @@ def get_dashboard(
                 job.result_data
             )
 
-        dashboard: dict[str, Any] = build_dashboard(
-            reports
+        dashboard: dict[str, Any] = (
+            build_dashboard(
+                reports
+            )
         )
 
         dashboard["organization"] = {
@@ -1235,14 +1186,108 @@ def get_dashboard(
             "name": organization.name,
         }
 
-        dashboard["analyzed_datasets"] = len(
-            seen_datasets
+        dashboard[
+            "analyzed_datasets"
+        ] = len(seen_datasets)
+
+        cache_dashboard(
+            organization.id,
+            dashboard,
         )
 
         return dashboard
 
     finally:
         db.close()
+
+@app.get("/admin/organizations")
+def get_admin_organizations(
+    admin=Depends(get_current_admin),
+):
+    from models import Organization
+
+    db = SessionLocal()
+
+    try:
+        organizations = (
+            db.query(Organization)
+            .order_by(
+                Organization.created_at.desc()
+            )
+            .all()
+        )
+
+        return [
+            {
+                "id": organization.id,
+                "name": organization.name,
+                "created_at":
+                    organization.created_at,
+            }
+            for organization
+            in organizations
+        ]
+
+    finally:
+        db.close()
+
+@app.get("/health")
+def health():
+    from sqlalchemy import text
+
+    result = {
+        "api": "ok",
+        "postgres": "unknown",
+        "redis": "unknown",
+        "minio": "unknown",
+    }
+
+    # PostgreSQL
+    db = SessionLocal()
+
+    try:
+        db.execute(
+            text("SELECT 1")
+        )
+
+        result["postgres"] = "ok"
+
+    except Exception:
+        result["postgres"] = "error"
+
+    finally:
+        db.close()
+
+    # Redis
+    try:
+        cache_redis.ping()
+        result["redis"] = "ok"
+
+    except Exception:
+        result["redis"] = "error"
+
+    # MinIO
+    try:
+        minio_client.bucket_exists(
+            MINIO_BUCKET
+        )
+
+        result["minio"] = "ok"
+
+    except Exception:
+        result["minio"] = "error"
+
+    if (
+        result["postgres"] != "ok"
+        or result["redis"] != "ok"
+        or result["minio"] != "ok"
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail=result,
+        )
+
+    return result
 
 @app.get("/")
 def root():
