@@ -31,7 +31,7 @@ from storage import (
     minio_client,
 )
 from typing import Any
-from tasks import process_dataset_analysis_task
+from celery_app import celery_app
 
 from redis_cache import (
     cache_dashboard,
@@ -612,10 +612,13 @@ def analyze_dataset(
         db.refresh(job)
 
         try:
-            task = process_dataset_analysis_task.delay(
-                dataset.id,
-                analysis_run.id,
-                job.id,
+            task = celery_app.send_task(
+                "process_dataset_analysis_task",
+                args=[
+                    dataset.id,
+                    analysis_run.id,
+                    job.id,
+                ],
             )
 
         except Exception as exc:
