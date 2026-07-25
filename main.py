@@ -1,37 +1,46 @@
-import pandas as pd
-import json
-import os
-from src.pipeline import run_analysis_pipeline
+import matplotlib.pyplot as plt
+import numpy as np
 
-def main():
-    csv_path = "data/raw/processed_dataset_v3.csv"
+plt.style.use('bmh')
 
-    if not os.path.exists(csv_path):
-        print(f"Ошибка: Файл {csv_path} не найден!")
-        return
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['JetBrainsMono NF', 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'sans-serif']
 
-    print(f"Загрузка данных из {csv_path}...")
-    df = pd.read_csv(csv_path)
+models = ['Llama-3-8B', 'Mistral-7B', 'gemma4:e2b\n(Наш выбор)']
+tps = [32, 41, 115]
+vram = [4.8, 4.1, 1.6]
 
-    text_column = "user_query"
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
-    if text_column not in df.columns:
-        print(f"Ошибка: Колонки '{text_column}' нет в CSV. Доступные колонки: {list(df.columns)}")
-        return
+colors_tps = ['#b0bec5', '#b0bec5', '#4caf50']
+colors_vram = ['#ffcc80', '#ffcc80', '#81c784']
 
-    raw_logs = df[text_column].dropna().astype(str).tolist()[:100]
-    print(f"Подготовлено {len(raw_logs)} запросов для анализа.")
+bars1 = ax1.bar(models, tps, color=colors_tps, edgecolor='black', linewidth=1)
+ax1.set_title('Скорость генерации (TPS)\n[Больше = Лучше]', fontsize=14, pad=15)
+ax1.set_ylabel('Токенов в секунду', fontsize=12)
+ax1.set_ylim(0, 140)
 
-    report_data = run_analysis_pipeline(raw_logs)
+for bar in bars1:
+    yval = bar.get_height()
+    ax1.text(bar.get_x() + bar.get_width()/2, yval + 3,
+             f'{yval}', ha='center', va='bottom', fontsize=12, fontweight='bold')
 
-    output_dir = "data/processed"
-    os.makedirs(output_dir, exist_ok=True)
+bars2 = ax2.bar(models, vram, color=colors_vram, edgecolor='black', linewidth=1)
+ax2.set_title('Потребление VRAM (4-bit)\n[Меньше = Лучше]', fontsize=14, pad=15)
+ax2.set_ylabel('Гигабайты (GB)', fontsize=12)
+ax2.set_ylim(0, 6)
 
-    output_file = os.path.join(output_dir, "analysis_report.json")
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(report_data, f, ensure_ascii=False, indent=4)
+for bar in bars2:
+    yval = bar.get_height()
+    ax2.text(bar.get_x() + bar.get_width()/2, yval + 0.15,
+             f'{yval} GB', ha='center', va='bottom', fontsize=12, fontweight='bold')
 
-    print(f"Успех! Результат сохранен в {output_file}. Теперь можно делать дашборд!")
+fig.suptitle('Архитектурный выбор LLM: Почему мы используем легковесную модель',
+             fontsize=16, fontweight='bold', y=1.05)
 
-if __name__ == "__main__":
-    main()
+ax1.tick_params(axis='x', labelsize=11)
+ax2.tick_params(axis='x', labelsize=11)
+
+plt.tight_layout()
+
+plt.savefig('llm_comparison.png', dpi=600, bbox_inches='tight')
