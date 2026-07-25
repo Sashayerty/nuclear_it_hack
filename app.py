@@ -429,15 +429,7 @@ def upload_dataset(
     text_column: str = Form("text"),
     organization=Depends(get_current_organization),
 ):
-    from models import (
-        AnalysisJob,
-        AnalysisRun,
-        AnalysisStatus,
-        Dataset,
-        DatasetStatus,
-        JobStatus,
-        JobType,
-    )
+    from models import Dataset, DatasetStatus
 
     filename = Path(
         file.filename or "dataset"
@@ -463,7 +455,6 @@ def upload_dataset(
             detail="Разрешены CSV, JSON, JSONL и TXT",
         )
 
-
     file.file.seek(0, 2)
     file_size = file.file.tell()
     file.file.seek(0)
@@ -475,7 +466,6 @@ def upload_dataset(
         f"{uuid4().hex}/"
         f"{filename}"
     )
-
 
     try:
         minio_client.put_object(
@@ -498,8 +488,6 @@ def upload_dataset(
     db = SessionLocal()
 
     try:
-
-
         dataset = Dataset(
             organization_id=organization.id,
             name=(
@@ -519,44 +507,16 @@ def upload_dataset(
         )
 
         db.add(dataset)
-
-        db.flush()
-
-
-
-        analysis_run = AnalysisRun(
-            dataset_id=dataset.id,
-            status=AnalysisStatus.pending,
-            embedding_model=(
-                "cointegrated/rubert-tiny2"
-            ),
-            clustering_algorithm=(
-                "AgglomerativeClustering"
-            ),
-            config={
-                "distance_threshold": 0.5,
-            },
-        )
-
-        db.add(analysis_run)
-        db.flush()
-
-
-
-        job = AnalysisJob(
-            analysis_run_id=analysis_run.id,
-            job_type=JobType.full_analysis,
-            status=JobStatus.pending,
-            progress=0,
-        )
-
-        db.add(job)
-
         db.commit()
-
         db.refresh(dataset)
-        db.refresh(analysis_run)
-        db.refresh(job)
+
+        return {
+            "id": dataset.id,
+            "name": dataset.name,
+            "file_format": dataset.file_format,
+            "file_size_bytes": dataset.file_size_bytes,
+            "status": dataset.status.value,
+        }
 
     except Exception:
         db.rollback()
@@ -571,101 +531,8 @@ def upload_dataset(
 
         raise
 
-
-    try:
-        task = (
-            process_dataset_analysis_task.delay(
-                dataset.id,
-                analysis_run.id,
-                job.id,
-            )
-        )
-
-    except Exception as exc:
-
-
-        job.status = JobStatus.failed
-        job.error_message = (
-            f"Ошибка постановки задачи "
-            f"в очередь: {exc}"
-        )
-
-        analysis_run.status = (
-            AnalysisStatus.failed
-        )
-
-        db.commit()
-
-        set_job_status(
-            job.id,
-            "failed",
-            0,
-            str(exc),
-        )
-
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "message":
-                    "Датасет загружен, "
-                    "но анализ не удалось запустить",
-
-                "dataset_id":
-                    dataset.id,
-
-                "analysis_run_id":
-                    analysis_run.id,
-
-                "job_id":
-                    job.id,
-            },
-        )
-
-
-    job.external_task_id = task.id
-
-    db.commit()
-
-    set_job_status(
-        job.id,
-        "pending",
-        0,
-    )
-
-
-    return {
-        "id":
-            dataset.id,
-
-        "name":
-            dataset.name,
-
-        "file_format":
-            dataset.file_format,
-
-        "file_size_bytes":
-            dataset.file_size_bytes,
-
-        "status":
-            dataset.status.value,
-
-        "analysis": {
-            "analysis_run_id":
-                analysis_run.id,
-
-            "job_id":
-                job.id,
-
-            "task_id":
-                task.id,
-
-            "status":
-                "pending",
-
-            "progress":
-                0,
-        },
-    }
+    finally:
+        db.close()
 
 @app.post(
     "/datasets/{dataset_id}/analyze",
@@ -673,9 +540,7 @@ def upload_dataset(
 )
 def analyze_dataset(
     dataset_id: int,
-    organization=Depends(
-        get_current_organization
-    ),
+    organization=Depends(get_current_organization),
 ):
     from models import (
         AnalysisJob,
@@ -696,20 +561,16 @@ def analyze_dataset(
 
         if (
             dataset is None
-            or dataset.organization_id
-            != organization.id
+            or dataset.organization_id != organization.id
         ):
             raise HTTPException(
                 status_code=404,
                 detail="Датасет не найден",
             )
-
         active_run = (
             db.query(AnalysisRun)
             .filter(
-                AnalysisRun.dataset_id
-                == dataset.id,
-
+                AnalysisRun.dataset_id == dataset.id,
                 AnalysisRun.status.in_([
                     AnalysisStatus.pending,
                     AnalysisStatus.processing,
@@ -721,20 +582,14 @@ def analyze_dataset(
         if active_run is not None:
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    "Этот датасет уже анализируется"
-                ),
+                detail="Этот датасет уже анализируется",
             )
 
         analysis_run = AnalysisRun(
             dataset_id=dataset.id,
             status=AnalysisStatus.pending,
-            embedding_model=(
-                "cointegrated/rubert-tiny2"
-            ),
-            clustering_algorithm=(
-                "AgglomerativeClustering"
-            ),
+            embedding_model="cointegrated/rubert-tiny2",
+            clustering_algorithm="AgglomerativeClustering",
             config={
                 "distance_threshold": 0.5,
             },
@@ -756,36 +611,26 @@ def analyze_dataset(
         db.refresh(analysis_run)
         db.refresh(job)
 
-
         try:
-            task = (
-                process_dataset_analysis_task.delay(
-                    dataset.id,
-                    analysis_run.id,
-                    job.id,
-                )
+            task = process_dataset_analysis_task.delay(
+                dataset.id,
+                analysis_run.id,
+                job.id,
             )
 
         except Exception as exc:
             job.status = JobStatus.failed
-
             job.error_message = (
-                f"Ошибка постановки задачи "
-                f"в очередь: {exc}"
+                f"Ошибка постановки задачи в очередь: {exc}"
             )
 
-            analysis_run.status = (
-                AnalysisStatus.failed
-            )
+            analysis_run.status = AnalysisStatus.failed
 
             db.commit()
 
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    "Не удалось поставить "
-                    "анализ в очередь"
-                ),
+                detail="Не удалось поставить анализ в очередь",
             )
 
         job.external_task_id = task.id
@@ -798,24 +643,14 @@ def analyze_dataset(
             0,
         )
 
+        # 8. Сразу отвечаем пользователю
         return {
-            "analysis_run_id":
-                analysis_run.id,
-
-            "job_id":
-                job.id,
-
-            "task_id":
-                task.id,
-
-            "dataset_id":
-                dataset.id,
-
-            "status":
-                "pending",
-
-            "progress":
-                0,
+            "analysis_run_id": analysis_run.id,
+            "job_id": job.id,
+            "task_id": task.id,
+            "dataset_id": dataset.id,
+            "status": "pending",
+            "progress": 0,
         }
 
     except HTTPException:
