@@ -75,7 +75,7 @@ docker compose up -d
 2. Скачайте модель `gemma2:2b` (или необходимую модель согласно конфигурации):
 
 ```bash
-ollama pull gemma2:2b
+ollama pull gemma4:e2b
 ```
 
 3. Убедитесь, что сервис Ollama запущен и доступен по адресу `http://localhost:11434`.
@@ -113,18 +113,6 @@ uv run python create_admin.py --login admin --password admin123
 ---
 
 ### 6. Запуск воркера фоновых задач Celery
-
-В отдельном окне терминала активируйте окружение и запустите воркер Celery для асинхронной обработки и кластеризации датасетов:
-
-**Windows:**
-```bash
-uv run celery -A celery_app worker --loglevel=info -P solo
-```
-
-**Linux / macOS:**
-```bash
-uv run celery -A celery_app worker --loglevel=info
-```
 
 ---
 
