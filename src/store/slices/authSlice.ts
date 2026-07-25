@@ -1,139 +1,115 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit'
-import { authApi, type User, type LoginDto, type RegisterDto } from '../../api/authApi'
-import { tokenStorage } from '../../utils/tokenStorage'
+import { apiService } from '../../api/client'
+import type { UserRole } from '../../api/types'
 
-export interface AuthState {
-  user: User | null
+interface AuthState {
   isAuthenticated: boolean
+  role: UserRole | null
+  orgName: string | null
+  adminLogin: string | null
+  accessToken: string | null
   isLoading: boolean
   error: string | null
-  authModalOpen: boolean
-  authModalMode: 'login' | 'register'
+  isAuthModalOpen: boolean
 }
+
+const token = localStorage.getItem('access_token')
+const role = localStorage.getItem('user_role') as UserRole | null
 
 const initialState: AuthState = {
-  user: null,
-  isAuthenticated: tokenStorage.hasTokens(),
+  isAuthenticated: Boolean(token && role),
+  role: token ? role : null,
+  orgName: token ? localStorage.getItem('org_name') : null,
+  adminLogin: token ? localStorage.getItem('admin_login') : null,
+  accessToken: token,
   isLoading: false,
   error: null,
-  authModalOpen: false,
-  authModalMode: 'login',
+  isAuthModalOpen: false
 }
 
-export const loginThunk = createAsyncThunk(
-  'auth/login',
-  async (credentials: LoginDto, { rejectWithValue }) => {
+export const loginOrgThunk = createAsyncThunk(
+  'auth/loginOrg',
+  async ({ name, password }: { name: string; password: string }, { rejectWithValue }) => {
     try {
-      const response = await authApi.login(credentials)
-      return response.user
+      const data = await apiService.organizationLogin(name, password)
+      return { token: data.access_token, role: 'organization' as UserRole, name }
     } catch (err: any) {
-      return rejectWithValue(err.message || 'Ошибка входа в систему')
+      return rejectWithValue(err.response?.data?.detail || err.message || 'Ошибка входа в систему')
     }
   }
 )
 
-export const registerThunk = createAsyncThunk(
-  'auth/register',
-  async (dto: RegisterDto, { rejectWithValue }) => {
+export const loginAdminThunk = createAsyncThunk(
+  'auth/loginAdmin',
+  async ({ login, password }: { login: string; password: string }, { rejectWithValue }) => {
     try {
-      const response = await authApi.register(dto)
-      return response.user
+      const data = await apiService.adminLogin(login, password)
+      return { token: data.access_token, role: 'admin' as UserRole, login }
     } catch (err: any) {
-      return rejectWithValue(err.message || 'Ошибка при регистрации')
+      return rejectWithValue(err.response?.data?.detail || err.message || 'Ошибка входа администратора')
     }
   }
 )
 
-export const logoutThunk = createAsyncThunk('auth/logout', async () => {
-  await authApi.logout()
-})
-
-export const checkAuthThunk = createAsyncThunk(
-  'auth/checkAuth',
-  async (_, { rejectWithValue }) => {
-    if (!tokenStorage.hasTokens()) {
-      return null
-    }
-    try {
-      return await authApi.getProfile()
-    } catch (err: any) {
-      tokenStorage.clearTokens()
-      return rejectWithValue('Сессия истекла')
-    }
-  }
-)
-
-export const authSlice = createSlice({
+const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    setAuthModalOpen: (state, action: PayloadAction<boolean>) => {
-      state.authModalOpen = action.payload
-      if (!action.payload) state.error = null
+    setAuthModalOpen(state, action: PayloadAction<boolean>) {
+      state.isAuthModalOpen = action.payload
     },
-    setAuthModalMode: (state, action: PayloadAction<'login' | 'register'>) => {
-      state.authModalMode = action.payload
+    logout(state) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user_role')
+      localStorage.removeItem('org_name')
+      localStorage.removeItem('admin_login')
+      state.isAuthenticated = false
+      state.role = null
+      state.orgName = null
+      state.adminLogin = null
+      state.accessToken = null
+      state.isAuthModalOpen = true
+    },
+    clearError(state) {
       state.error = null
-    },
-    clearError: (state) => {
-      state.error = null
-    },
+    }
   },
   extraReducers: (builder) => {
     builder
-      .addCase(loginThunk.pending, (state) => {
+      .addCase(loginOrgThunk.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
-      .addCase(loginThunk.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(loginOrgThunk.fulfilled, (state, action) => {
         state.isLoading = false
         state.isAuthenticated = true
-        state.user = action.payload
-        state.authModalOpen = false
+        state.role = 'organization'
+        state.orgName = action.payload.name
+        state.accessToken = action.payload.token
+        state.isAuthModalOpen = false
       })
-      .addCase(loginThunk.rejected, (state, action) => {
+      .addCase(loginOrgThunk.rejected, (state, action) => {
         state.isLoading = false
-        state.error = (action.payload as string) || 'Не удалось войти'
+        state.error = action.payload as string
       })
-      .addCase(registerThunk.pending, (state) => {
+      .addCase(loginAdminThunk.pending, (state) => {
         state.isLoading = true
         state.error = null
       })
-      .addCase(registerThunk.fulfilled, (state, action: PayloadAction<User>) => {
+      .addCase(loginAdminThunk.fulfilled, (state, action) => {
         state.isLoading = false
         state.isAuthenticated = true
-        state.user = action.payload
-        state.authModalOpen = false
+        state.role = 'admin'
+        state.adminLogin = action.payload.login
+        state.accessToken = action.payload.token
+        state.isAuthModalOpen = false
       })
-      .addCase(registerThunk.rejected, (state, action) => {
+      .addCase(loginAdminThunk.rejected, (state, action) => {
         state.isLoading = false
-        state.error = (action.payload as string) || 'Не удалось зарегистрироваться'
+        state.error = action.payload as string
       })
-      .addCase(logoutThunk.fulfilled, (state) => {
-        state.user = null
-        state.isAuthenticated = false
-        state.isLoading = false
-      })
-      .addCase(checkAuthThunk.pending, (state) => {
-        state.isLoading = true
-      })
-      .addCase(checkAuthThunk.fulfilled, (state, action) => {
-        state.isLoading = false
-        if (action.payload) {
-          state.user = action.payload
-          state.isAuthenticated = true
-        } else {
-          state.user = null
-          state.isAuthenticated = false
-        }
-      })
-      .addCase(checkAuthThunk.rejected, (state) => {
-        state.isLoading = false
-        state.user = null
-        state.isAuthenticated = false
-      })
-  },
+  }
 })
 
-export const { setAuthModalOpen, setAuthModalMode, clearError } = authSlice.actions
+export const { setAuthModalOpen, logout, clearError } = authSlice.actions
 export default authSlice.reducer
