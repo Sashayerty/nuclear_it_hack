@@ -541,6 +541,7 @@ def upload_dataset(
 )
 def analyze_dataset(
     dataset_id: int,
+    background_tasks: BackgroundTasks,
     organization=Depends(
         get_current_organization
     ),
@@ -555,7 +556,6 @@ def analyze_dataset(
     )
 
     db = SessionLocal()
-    print('ПРОЙДЕНО ПОСЛЕ DB')
 
     try:
         dataset = db.get(
@@ -625,40 +625,27 @@ def analyze_dataset(
         db.refresh(analysis_run)
         db.refresh(job)
 
-
+        task_id_str = f"job_{job.id}"
         try:
-            task = (
-                process_dataset_analysis_task.delay(
-                    dataset.id,
-                    analysis_run.id,
-                    job.id,
-                )
+            task = process_dataset_analysis_task.delay(
+                dataset.id,
+                analysis_run.id,
+                job.id,
             )
-        print('TASK ПРОШЕЛ')
-        except Exception as exc:
-            job.status = JobStatus.failed
+            task_id_str = task.id
+            print(f"TASK ОТПРАВЛЕН В CELERY (task_id: {task_id_str})")
+        except Exception as cel_exc:
+            print(f"Celery недоступен, выполняем через FastAPI BackgroundTasks: {cel_exc}")
 
-            job.error_message = (
-                f"Ошибка постановки задачи "
-                f"в очередь: {exc}"
-            )
+        # Запускаем также в BackgroundTasks для гарантированного выполнения без Celery воркера
+        background_tasks.add_task(
+            process_dataset_analysis_task,
+            dataset.id,
+            analysis_run.id,
+            job.id,
+        )
 
-            analysis_run.status = (
-                AnalysisStatus.failed
-            )
-
-            db.commit()
-
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Не удалось поставить "
-                    "анализ в очередь"
-                ),
-            )
-
-        job.external_task_id = task.id
-
+        job.external_task_id = task_id_str
         db.commit()
 
         set_job_status(
@@ -668,23 +655,12 @@ def analyze_dataset(
         )
 
         return {
-            "analysis_run_id":
-                analysis_run.id,
-
-            "job_id":
-                job.id,
-
-            "task_id":
-                task.id,
-
-            "dataset_id":
-                dataset.id,
-
-            "status":
-                "pending",
-
-            "progress":
-                0,
+            "analysis_run_id": analysis_run.id,
+            "job_id": job.id,
+            "task_id": task_id_str,
+            "dataset_id": dataset.id,
+            "status": "pending",
+            "progress": 0,
         }
 
     except HTTPException:
