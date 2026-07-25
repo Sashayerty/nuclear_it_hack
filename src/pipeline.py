@@ -45,9 +45,8 @@ def run_analysis_pipeline(raw_logs: list[str]) -> list[dict]:
         }
 
         for cluster in clusters:
-            if len(cluster.texts) < 2:
-                continue
-
+            # if len(cluster.texts) < 2:
+            #     continue
             naming_res = name_cluster(ai_client, cluster.texts)
             summary_res = summarize_cluster(ai_client, naming_res.use_case_name, cluster.texts)
             rec_res = generate_recommendations(ai_client, naming_res.use_case_name, summary_res.description)

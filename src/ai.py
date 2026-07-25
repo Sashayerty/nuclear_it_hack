@@ -72,6 +72,8 @@ class AI:
             return response_model.model_validate_json(raw_text)
 
         except Exception as e:
-            print(e)
+            raise RuntimeError(
+                f"Ошибка обращения к Ollama: {e}"
+            ) from e
 
 ai_client = AI(model=DEFAULT_MODEL)
