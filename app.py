@@ -977,26 +977,54 @@ def build_dashboard(
                     use_case_name
                 ] += queries_count
 
-                broken_queries_count += len(
-                    use_case.get(
-                        "broken_queries",
-                        [],
-                    )
+                raw_broken = use_case.get(
+                    "broken_queries",
+                    [],
                 )
+                if isinstance(raw_broken, list):
+                    broken_queries_count += len(raw_broken)
+                elif isinstance(raw_broken, str):
+                    broken_queries_count += 1
 
-                for pain in use_case.get(
+                raw_pains = use_case.get(
                     "pain_points",
                     [],
-                ):
-                    pain_points[pain] += 1
+                )
+                if isinstance(raw_pains, str):
+                    raw_pains = [raw_pains]
+                if isinstance(raw_pains, list):
+                    for pain in raw_pains:
+                        if isinstance(pain, str):
+                            pain_points[pain] += 1
 
                 automation = use_case.get(
                     "automation_potential",
                     "",
                 )
 
-                if automation.lower().startswith(
-                    "высок"
+                automation_lower = (
+                    automation.lower()
+                    if isinstance(automation, str)
+                    else ""
+                )
+
+                raw_actions = use_case.get(
+                    "suggested_actions",
+                    [],
+                )
+
+                # Гарантируем, что suggested_actions — список
+                if isinstance(raw_actions, str):
+                    suggested_actions = [raw_actions]
+                elif isinstance(raw_actions, list):
+                    suggested_actions = raw_actions
+                else:
+                    suggested_actions = []
+
+                if (
+                    automation_lower.startswith("высок")
+                    or automation_lower.startswith("high")
+                    or automation_lower in ("medium", "средн")
                 ):
                     automation_candidates.append({
                         "name": use_case_name,
@@ -1004,10 +1032,7 @@ def build_dashboard(
                         "automation_potential":
                             automation,
                         "suggested_actions":
-                            use_case.get(
-                                "suggested_actions",
-                                [],
-                            ),
+                            suggested_actions,
                     })
 
     total_requests = sum(
