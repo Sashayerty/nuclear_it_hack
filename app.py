@@ -31,7 +31,7 @@ from storage import (
     minio_client,
 )
 from typing import Any
-from celery_app import celery_app
+from tasks import process_dataset_analysis_task
 
 from redis_cache import (
     cache_dashboard,
@@ -41,7 +41,6 @@ from redis_cache import (
     set_job_status,
 )
 from sqlalchemy import text
-from src.pipeline import run_analysis_pipeline
 
 
 @asynccontextmanager
@@ -116,6 +115,7 @@ def get_current_admin(
         if admin is None:
             raise credentials_exception
 
+        db.expunge(admin)
         return admin
 
     finally:
@@ -360,6 +360,7 @@ def get_current_organization(
         if organization is None:
             raise credentials_exception
 
+        db.expunge(organization)
         return organization
 
     finally:
@@ -540,7 +541,10 @@ def upload_dataset(
 )
 def analyze_dataset(
     dataset_id: int,
-    organization=Depends(get_current_organization),
+    background_tasks: BackgroundTasks,
+    organization=Depends(
+        get_current_organization
+    ),
 ):
     from models import (
         AnalysisJob,
@@ -561,16 +565,20 @@ def analyze_dataset(
 
         if (
             dataset is None
-            or dataset.organization_id != organization.id
+            or dataset.organization_id
+            != organization.id
         ):
             raise HTTPException(
                 status_code=404,
                 detail="Датасет не найден",
             )
+
         active_run = (
             db.query(AnalysisRun)
             .filter(
-                AnalysisRun.dataset_id == dataset.id,
+                AnalysisRun.dataset_id
+                == dataset.id,
+
                 AnalysisRun.status.in_([
                     AnalysisStatus.pending,
                     AnalysisStatus.processing,
@@ -582,14 +590,20 @@ def analyze_dataset(
         if active_run is not None:
             raise HTTPException(
                 status_code=409,
-                detail="Этот датасет уже анализируется",
+                detail=(
+                    "Этот датасет уже анализируется"
+                ),
             )
 
         analysis_run = AnalysisRun(
             dataset_id=dataset.id,
             status=AnalysisStatus.pending,
-            embedding_model="cointegrated/rubert-tiny2",
-            clustering_algorithm="AgglomerativeClustering",
+            embedding_model=(
+                "cointegrated/rubert-tiny2"
+            ),
+            clustering_algorithm=(
+                "AgglomerativeClustering"
+            ),
             config={
                 "distance_threshold": 0.5,
             },
@@ -611,33 +625,27 @@ def analyze_dataset(
         db.refresh(analysis_run)
         db.refresh(job)
 
+        task_id_str = f"job_{job.id}"
         try:
-            task = celery_app.send_task(
-                "process_dataset_analysis_task",
-                args=[
-                    dataset.id,
-                    analysis_run.id,
-                    job.id,
-                ],
+            task = process_dataset_analysis_task.delay(
+                dataset.id,
+                analysis_run.id,
+                job.id,
             )
+            task_id_str = task.id
+            print(f"TASK ОТПРАВЛЕН В CELERY (task_id: {task_id_str})")
+        except Exception as cel_exc:
+            print(f"Celery недоступен, выполняем через FastAPI BackgroundTasks: {cel_exc}")
 
-        except Exception as exc:
-            job.status = JobStatus.failed
-            job.error_message = (
-                f"Ошибка постановки задачи в очередь: {exc}"
-            )
+        # Запускаем также в BackgroundTasks для гарантированного выполнения без Celery воркера
+        background_tasks.add_task(
+            process_dataset_analysis_task,
+            dataset.id,
+            analysis_run.id,
+            job.id,
+        )
 
-            analysis_run.status = AnalysisStatus.failed
-
-            db.commit()
-
-            raise HTTPException(
-                status_code=503,
-                detail="Не удалось поставить анализ в очередь",
-            )
-
-        job.external_task_id = task.id
-
+        job.external_task_id = task_id_str
         db.commit()
 
         set_job_status(
@@ -646,11 +654,10 @@ def analyze_dataset(
             0,
         )
 
-        # 8. Сразу отвечаем пользователю
         return {
             "analysis_run_id": analysis_run.id,
             "job_id": job.id,
-            "task_id": task.id,
+            "task_id": task_id_str,
             "dataset_id": dataset.id,
             "status": "pending",
             "progress": 0,
