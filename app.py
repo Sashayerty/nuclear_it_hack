@@ -115,6 +115,7 @@ def get_current_admin(
         if admin is None:
             raise credentials_exception
 
+        db.expunge(admin)
         return admin
 
     finally:
@@ -359,6 +360,7 @@ def get_current_organization(
         if organization is None:
             raise credentials_exception
 
+        db.expunge(organization)
         return organization
 
     finally:
