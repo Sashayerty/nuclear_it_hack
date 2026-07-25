@@ -29,9 +29,7 @@ certifi==2026.7.22
     #   minio
     #   requests
 cffi==2.1.0
-    # via
-    #   argon2-cffi-bindings
-    #   cryptography
+    # via argon2-cffi-bindings
 charset-normalizer==3.4.9
     # via requests
 click==8.4.2
@@ -53,8 +51,6 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   click
     #   tqdm
     #   typer
-cryptography==49.0.0
-    # via jwt
 cuda-bindings==13.3.1 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via torch
 cuda-pathfinder==1.6.0 ; python_full_version < '3.15' and sys_platform == 'linux'
@@ -97,8 +93,6 @@ jinja2==3.1.6
     # via torch
 joblib==1.5.3
     # via scikit-learn
-jwt==1.4.0
-    # via nuclear-it-hack
 kombu==5.6.2
     # via celery
 markdown-it-py==4.2.0
@@ -201,6 +195,8 @@ pydantic-core==2.46.4
     # via pydantic
 pygments==2.20.0
     # via rich
+pyjwt==2.13.0
+    # via nuclear-it-hack
 python-dateutil==2.9.0.post0
     # via
     #   celery
