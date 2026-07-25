@@ -105,6 +105,12 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+        unique=True,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -1239,4 +1245,32 @@ class UseCaseMetric(Base):
 
     use_case: Mapped["UseCase"] = relationship(
         back_populates="metrics"
+    )
+
+
+
+class Admin(Base):
+    __tablename__ = "admins"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    login: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=text("now()"),
     )
