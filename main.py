@@ -4,7 +4,6 @@ import os
 from back.pipeline import run_analysis_pipeline
 from back.config import DEBUG_MODE
 
-
 def main():
     csv_path = "data/raw/1.csv"
 
@@ -14,15 +13,28 @@ def main():
 
     if DEBUG_MODE:
         print(f"Загрузка данных из {csv_path}...")
+        
     df = pd.read_csv(csv_path)
-
     text_column = "user_query"
 
     if text_column not in df.columns:
         print(f"Ошибка: Колонки '{text_column}' нет в CSV. Доступные колонки: {list(df.columns)}")
         return
 
-    raw_logs = df[text_column].dropna().astype(str).tolist()[:10]
+    # Убираем пустые запросы
+    df = df.dropna(subset=[text_column])
+    
+    # Заполняем пропуски в метаданных, чтобы не падал код при подсчетах
+    df = df.fillna({
+        "tokens_count": 0, 
+        "price_rub": 0.0, 
+        "department": "Общий"
+    })
+
+    # ПРЕВРАЩАЕМ В СПИСОК СЛОВАРЕЙ (со всеми полями!), а не просто список строк
+    # Внимание: [:10] обрезает датасет до 10 строк. Для полного прогона убери [:10]
+    raw_logs = df.to_dict(orient="records")[:10] 
+    
     if DEBUG_MODE:
         print(f"Подготовлено {len(raw_logs)} запросов для анализа.")
 

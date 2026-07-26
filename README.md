@@ -1,4 +1,3 @@
-https://disk.yandex.ru/i/elH7Qbp8AhxMSQ
 # 🚀 AI Analytics Platform — Анализ и Кластеризация Обращений
 
 Автоматизированная аналитическая платформа для обработки, кластеризации и суммаризации пользовательских логов, промптов и обращений в техподдержку. Платформа использует машинное обучение для эмбеддингов, векторного поиска и векторизации, а также локальные нейросети (Ollama LLM / RuBERT) для выделения проблематики и формирования рекомендаций по автоматизации.
@@ -12,7 +11,7 @@ https://disk.yandex.ru/i/elH7Qbp8AhxMSQ
 - **Фоновые задачи & Кэширование:** Celery / Redis
 - **Хранилище датасетов:** MinIO (S3-compatible Object Storage)
 - **ИИ / ML инструменты:**
-  - **Ollama LLM:** Модели `gemma2:2b` или аналоги для суммаризации и извлечения сущностей
+  - **Ollama LLM:** Модели `gemma4:e2b` или аналоги для суммаризации и извлечения сущностей
   - **Embeddings:** `cointegrated/rubert-tiny2` (Transformers / Torch)
   - **Кластеризация:** `scikit-learn` (`AgglomerativeClustering`)
 - **Frontend:** React (Vite / TypeScript / Redux Toolkit / TailwindCSS)
@@ -73,7 +72,7 @@ docker compose up -d
 ### 3. Запуск и настройка Ollama (LLM)
 
 1. Установите и запустите приложение **Ollama**.
-2. Скачайте модель `gemma2:2b` (или необходимую модель согласно конфигурации):
+2. Скачайте модель `gemma4:e2b` (или необходимую модель согласно конфигурации):
 
 ```bash
 ollama pull gemma4:e2b
@@ -180,4 +179,4 @@ npm run dev
    - Очистите старые контейнеры командой `docker rm -f ai-analytics-postgres ai-analytics-minio ai-analytics-redis` и перезапустите `docker compose up -d`.
 
 3. **Celery задачи падают с ошибкой подключения к Ollama**
-   - Проверьте, запущен ли Ollama локально (`ollama list`) и выполнена ли команда `ollama pull gemma2:2b`.
+   - Проверьте, запущен ли Ollama локально (`ollama list`) и выполнена ли команда `ollama pull gemma4:e2b`.

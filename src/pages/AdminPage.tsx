@@ -9,6 +9,7 @@ export const AdminPage = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [newOrgAvatar, setNewOrgAvatar] = useState<string | null>(null)
   const [searchQuery] = useState('')
   const [perPage, setPerPage] = useState<number>(5)
   const [currentPage, setCurrentPage] = useState<number>(1)
@@ -48,10 +49,19 @@ export const AdminPage = () => {
     setIsSubmitting(true)
     try {
       const created = await apiService.createOrganization(newOrgName, newOrgPassword)
+      if (newOrgAvatar) {
+        try {
+          localStorage.setItem(`org_avatar_${created.id}`, newOrgAvatar)
+          localStorage.setItem(`org_avatar_${created.name}`, newOrgAvatar)
+        } catch (e) {
+          console.error('Failed to save avatar to localStorage', e)
+        }
+      }
       setOrganizations([created, ...organizations])
       setSuccess(`Организация "${created.name}" успешно создана`)
       setNewOrgName('')
       setNewOrgPassword('')
+      setNewOrgAvatar(null)
       setIsModalOpen(false)
     } catch (err: any) {
       const detail = err.response?.data?.detail
@@ -73,6 +83,8 @@ export const AdminPage = () => {
 
     try {
       await apiService.deleteOrganization(id)
+      localStorage.removeItem(`org_avatar_${id}`)
+      localStorage.removeItem(`org_avatar_${name}`)
       setOrganizations(organizations.filter((o) => o.id !== id))
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Нельзя удалить организацию с привязанными данными')
@@ -89,52 +101,29 @@ export const AdminPage = () => {
     currentPage * perPage
   )
 
+  const getOrgAvatar = (id: number, name: string): string | null => {
+    return localStorage.getItem(`org_avatar_${id}`) || localStorage.getItem(`org_avatar_${name}`)
+  }
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-'
     const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
+    if (isNaN(d.getTime())) return '-'
+    return d.toLocaleDateString('ru-RU', {
       day: '2-digit',
+      month: '2-digit',
       year: 'numeric'
     })
   }
 
   return (
-    <div className="space-y-4 pb-2 font-sans text-slate-800 selection:bg-[#10c885] selection:text-white max-w-7xl mx-auto">
-      {error && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2">
-            <span>⚠️ {error}</span>
-            <button
-              onClick={loadOrganizations}
-              className="underline font-semibold hover:text-rose-900 cursor-pointer ml-2"
-            >
-              Повторить
-            </button>
-          </div>
-          <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-700 cursor-pointer">
-            ✕
-          </button>
-        </div>
-      )}
-
-      {success && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium flex items-center justify-between shadow-xs">
-          <span>✅ {success}</span>
-          <button onClick={() => setSuccess(null)} className="text-emerald-400 hover:text-emerald-700 cursor-pointer">
-            ✕
-          </button>
-        </div>
-      )}
-
+    <div className="space-y-4 pb-2 font-sans text-slate-800 selection:bg-[#10c885] selection:text-white w-full mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-2xl font-medium text-black tracking-tight">
             Организации
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Управление аккаунтами и доступом к данным
-          </p>
+
         </div>
 
         <div className="flex items-center gap-3">
@@ -142,6 +131,7 @@ export const AdminPage = () => {
             onClick={() => {
               setError(null)
               setSuccess(null)
+              setNewOrgAvatar(null)
               setIsModalOpen(true)
             }}
             title="Добавить новую организацию"
@@ -152,198 +142,235 @@ export const AdminPage = () => {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="hidden md:grid grid-cols-12 px-4 py-1.5 text-xs font-semibold text-black/30">
-          <div className="col-span-4">Организация</div>
-          <div className="col-span-3 text-center">Статус</div>
-          <div className="col-span-3 text-center">Дата регистрации</div>
-          <div className="col-span-2 text-right">Действия</div>
-        </div>
-
-        {isLoading ? (
-          <div className="py-8 px-4 bg-white rounded-xl border border-slate-100 text-center text-xs font-medium text-slate-400 flex flex-col items-center gap-3 shadow-xs">
-            <div className="w-7 h-7 border-2 border-[#10c885] border-t-transparent rounded-full animate-spin" />
-            <span>Загрузка списка организаций...</span>
-          </div>
-        ) : error ? (
-          <div className="py-8 px-4 bg-white rounded-xl border border-rose-100 text-center text-xs font-medium text-rose-600 shadow-xs flex flex-col items-center gap-3">
-            <span>⚠️ {error}</span>
-            <button
-              onClick={loadOrganizations}
-              className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md font-semibold cursor-pointer transition-colors"
-            >
-              Повторить попытку
-            </button>
-          </div>
-        ) : paginatedOrgs.length === 0 ? (
-          <div className="py-8 px-4 bg-white rounded-xl border border-black/10 text-center text-xs font-medium text-slate-400 shadow-xs">
-            Организации не найдены
-          </div>
-        ) : (
-          paginatedOrgs.map((org) => (
-            <div
-              key={org.id}
-              className="bg-white rounded-[6px] px-4 py-3 border border-slate-100 transition-all flex flex-col md:grid md:grid-cols-12 items-center gap-4 group"
-            >
-              <div className="md:col-span-4 w-full">
-                <div className="text-base font-bold text-slate-900 transition-colors">
-                  {org.name}
+      <div className="rounded-[9px] overflow-x-auto">
+        <table className="w-full min-w-[500px] bg-[#E2E3E7]/63 text-xs">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="px-4 py-2.5 text-left font-semibold text-black/30 uppercase">
+                <div className="flex items-center gap-1">
+                  Название
+                  <span className="flex flex-col ml-0.5">
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▲</button>
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▼</button>
+                  </span>
                 </div>
-                <div className="text-xs text-black/30 font-medium mt-0.5">
-                  Корпоративный аккаунт • ID: #{org.id}
+              </th>
+              <th className="px-4 py-2.5 text-left font-semibold text-black/30 uppercase">
+                <div className="flex items-center gap-1">
+                  ID
+                  <span className="flex flex-col ml-0.5">
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▲</button>
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▼</button>
+                  </span>
                 </div>
-              </div>
-
-              <div className="md:col-span-3 w-full flex md:justify-center">
-                <span className="inline-flex items-center gap-2 px-3 py-1 text-black text-xs font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  Норма
-                </span>
-              </div>
-
-              <div className="md:col-span-3 w-full flex md:justify-center text-xs font-medium text-black">
-                {formatDate(org.created_at)}
-              </div>
-
-              <div className="md:col-span-2 w-full flex justify-end">
-                <button
-                  onClick={() => handleDeleteOrg(org.id, org.name)}
-                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-[4px] text-xs font-semibold transition-all cursor-pointer"
-                >
-                  Удалить
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
-        <div className="flex items-center gap-2">
-          <span>Show</span>
-          <select
-            value={perPage}
-            onChange={(e) => {
-              setPerPage(Number(e.target.value))
-              setCurrentPage(1)
-            }}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1 font-semibold text-slate-800 focus:outline-none cursor-pointer"
-          >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-          </select>
-          <span>per page</span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <span>
-            {filteredOrgs.length === 0
-              ? '0 of 0'
-              : `${(currentPage - 1) * perPage + 1}-${Math.min(
-                currentPage * perPage,
-                filteredOrgs.length
-              )} of ${filteredOrgs.length}`}
-          </span>
-
-          <div className="flex items-center gap-1">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-2 py-1 text-slate-400 hover:text-slate-900 disabled:opacity-30 cursor-pointer font-bold"
-            >
-              ←
-            </button>
-
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`w-7 h-7 rounded-xl text-xs font-semibold flex items-center justify-center transition-all cursor-pointer ${page === currentPage
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-              >
-                {page}
-              </button>
-            ))}
-
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="px-2 py-1 text-slate-400 hover:text-slate-900 disabled:opacity-30 cursor-pointer font-bold"
-            >
-              →
-            </button>
-          </div>
-        </div>
+              </th>
+              <th className="px-4 py-2.5 text-left font-semibold text-black/30 uppercase">
+                <div className="flex items-center gap-1">
+                  Статус
+                  <span className="flex flex-col ml-0.5">
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▲</button>
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▼</button>
+                  </span>
+                </div>
+              </th>
+              <th className="px-4 py-2.5 text-left font-semibold text-black/30 uppercase">
+                <div className="flex items-center gap-1">
+                  Дата создания
+                  <span className="flex flex-col ml-0.5">
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▲</button>
+                    <button type="button" className="text-[6px] leading-none text-black/20 cursor-default">▼</button>
+                  </span>
+                </div>
+              </th>
+              <th className="px-4 py-2.5 text-right font-semibold text-black/30 uppercase">
+                Действия
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-xs font-medium text-slate-400">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-7 h-7 border-2 border-[#10c885] border-t-transparent rounded-full animate-spin" />
+                    <span>Загрузка списка организаций...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-xs font-medium text-rose-600">
+                  <div className="flex flex-col items-center gap-3">
+                    <span>{error}</span>
+                    <button
+                      onClick={loadOrganizations}
+                      className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md font-semibold cursor-pointer transition-colors"
+                    >
+                      Повторить попытку
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ) : paginatedOrgs.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-xs font-medium text-slate-400">
+                  Организации не найдены
+                </td>
+              </tr>
+            ) : (
+              paginatedOrgs.map((org) => (
+                <tr key={org.id} className="border-b bg-[#F2F2F2] border-black/7 last:border-b-0 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      {getOrgAvatar(org.id, org.name) ? (
+                        <img
+                          src={getOrgAvatar(org.id, org.name)!}
+                          alt={org.name}
+                          className="w-7 h-7 rounded-full object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-[10px] font-bold shrink-0">
+                          {org.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="font-medium text-black">{org.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-black/40">
+                    {String(org.id).padStart(2, '0')}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-black font-medium">
+                      Норма
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-black font-medium">
+                    {formatDate(org.created_at)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleDeleteOrg(org.id, org.name)}
+                      className="text-rose-500 hover:text-rose-700 text-xs font-black transition-colors cursor-pointer"
+                    >
+                      Удалить
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-[20px] p-4 max-w-md w-full shadow-2xl border border-slate-100 relative space-y-5 animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-[12px] p-4 max-w-[440px] w-full shadow-2xl relative animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-1">
-              <div>
-                <h3 className="text-[15px] font-medium text-slate-900">
-                  Добавить новую организацию
-                </h3>
-                <h3 className="text-[13px] font-medium text-slate-900/30">
-                  Создание аккаунта организации
-                </h3>
-              </div>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+              <h3 className="text-base font-bold text-black">
+                Создать организацию
+              </h3>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer text-base font-bold rounded-xl mr-2 transition-colors"
+                className="text-black/30 hover:text-black/20 transition-colors p-1 cursor-pointer"
               >
-                ✕
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
             <form onSubmit={handleCreateOrg} className="space-y-4">
               <div>
+                <label className="block text-sm font-semibold text-black mb-2">
+                  Логотип организации
+                </label>
+                <label
+                  htmlFor="avatar-upload"
+                  className="border border-slate-200 rounded-[8px] p-5 text-center cursor-pointer hover:border-slate-300 transition-colors flex flex-col items-center justify-center gap-1.5 bg-white block"
+                >
+                  {newOrgAvatar ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <img
+                        src={newOrgAvatar}
+                        alt="Preview"
+                        className="w-10 h-10 rounded-full object-cover border border-slate-200"
+                      />
+                      <span className="text-xs text-black/30 font-medium">Файл выбран (нажмите для замены)</span>
+                    </div>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94a3 3 0 114.243 4.243L8.587 18.315a1.5 1.5 0 01-2.122-2.122l8.835-8.836" />
+                      </svg>
+                      <span className="text-sm text-black/30 font-normal">Прикрепите файл</span>
+                    </>
+                  )}
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                          setNewOrgAvatar(reader.result as string)
+                        }
+                        reader.readAsDataURL(file)
+                      } else {
+                        setNewOrgAvatar(null)
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Название организации
+                </label>
                 <input
                   type="text"
                   required
                   value={newOrgName}
                   onChange={(e) => setNewOrgName(e.target.value)}
-                  placeholder="Название организации"
-                  className="w-full bg-black/2 border border-black/10 rounded-[4px] px-4 py-3 text-xs text-black font-medium placeholder-black/30 outline-none focus:border-[#10c885] focus:bg-white transition-all"
+                  placeholder="Название"
+                  className="w-full border border-slate-200 rounded-[8px] px-3.5 py-2.5 text-sm text-black placeholder:text-black/30 outline-none focus:border-[#10B981] transition-all"
                 />
               </div>
+
               <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Пароль
+                </label>
                 <input
                   type="password"
                   required
                   value={newOrgPassword}
                   onChange={(e) => setNewOrgPassword(e.target.value)}
-                  placeholder="Пароль доступа"
-                  className="w-full bg-black/2 border border-black/10 rounded-[4px] px-4 py-3 text-xs text-black font-medium placeholder-black/30 outline-none focus:border-[#10c885] focus:bg-white transition-all"
+                  placeholder="********"
+                  className="w-full border border-slate-200 rounded-[8px] px-3.5 py-2.5 text-sm text-black placeholder:text-black/30 outline-none focus:border-[#10B981] transition-all"
                 />
               </div>
 
-              <div className="flex flex-col items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 w-full border border-slate-200 hover:border-slate-300 text-slate-600 font-semibold text-xs rounded-[4px] transition-colors cursor-pointer"
-                >
-                  Отмена
-                </button>
+              <div className="pt-4 mt-5 border-t border-slate-100">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-6 py-2.5 w-full bg-[#10c885] hover:bg-[#0eb779] active:bg-[#0ca76e] text-white font-semibold text-xs rounded-[4px] shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-2 bg-[#10B981] hover:bg-[#0e9f6e] active:bg-[#059669] text-white font-semibold text-sm rounded-[6px] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-xs"
                 >
                   {isSubmitting ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <span>Создать аккаунт</span>
+                    <span>Создать</span>
                   )}
                 </button>
               </div>

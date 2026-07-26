@@ -7,10 +7,20 @@ def clean_text(text: str) -> str:
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-def filter_logs(raw_logs: list[str]) -> list[str]:
+def filter_logs(raw_logs: list) -> list:
     """
-    Очищает массив логов и удаляет бессмысленные/короткие запросы.
+    Очищает массив логов. Теперь поддерживает список словарей с метаданными.
     """
-    cleaned = [clean_text(log) for log in raw_logs]
-    valid_logs = [log for log in cleaned if len(log) > 5]
+    valid_logs = []
+    for log in raw_logs:
+        if isinstance(log, str):
+            log = {"user_query": log}
+            
+        text = str(log.get("user_query", ""))
+        cleaned_text = clean_text(text)
+        
+        if len(cleaned_text) > 5:
+            log["user_query"] = cleaned_text
+            valid_logs.append(log)
+            
     return valid_logs

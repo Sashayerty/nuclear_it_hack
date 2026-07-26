@@ -637,7 +637,6 @@ def analyze_dataset(
         except Exception as cel_exc:
             print(f"Celery недоступен, выполняем через FastAPI BackgroundTasks: {cel_exc}")
 
-        # Запускаем также в BackgroundTasks для гарантированного выполнения без Celery воркера
         background_tasks.add_task(
             process_dataset_analysis_task,
             dataset.id,
@@ -669,6 +668,44 @@ def analyze_dataset(
 
     finally:
         db.close()
+
+
+@app.delete("/datasets/{dataset_id}", status_code=204)
+def delete_dataset(
+    dataset_id: int,
+    organization=Depends(get_current_organization),
+):
+    from models import Dataset
+    db = SessionLocal()
+    try:
+        dataset = db.get(Dataset, dataset_id)
+        if dataset is None or dataset.organization_id != organization.id:
+            raise HTTPException(
+                status_code=404,
+                detail="Датасет не найден",
+            )
+            
+        try:
+            if dataset.file_uri and dataset.file_uri.startswith(f"s3://{MINIO_BUCKET}/"):
+                object_name = dataset.file_uri.replace(f"s3://{MINIO_BUCKET}/", "")
+                minio_client.remove_object(MINIO_BUCKET, object_name)
+        except Exception as e:
+            print(f"Failed to delete file from MinIO: {e}")
+
+        db.delete(dataset)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при удалении датасета: {str(e)}"
+        )
+    finally:
+        db.close()
+
 
 @app.get(
     "/analysis-runs/{analysis_run_id}"
@@ -933,6 +970,7 @@ def build_dashboard(
     reports: list[list[dict]],
 ) -> dict[str, Any]:
     from collections import Counter
+    from back.economics import calculate_finops_and_roi
 
     category_counts = Counter()
     use_case_counts = Counter()
@@ -940,56 +978,31 @@ def build_dashboard(
 
     broken_queries_count = 0
     automation_candidates = []
+    
+    total_tokens_used = 0
+    total_cost_rub = 0.0
 
     for report in reports:
-
         for category in report:
+            category_name = category.get("category_name", "Другое")
+            requests_count = category.get("total_requests", 0)
+            category_counts[category_name] += requests_count
 
-            category_name = category.get(
-                "category_name",
-                "Другое",
-            )
+            for use_case in category.get("use_cases", []):
+                use_case_name = use_case.get("use_case_name", "Без названия")
+                queries_count = use_case.get("queries_count", 0)
+                use_case_counts[use_case_name] += queries_count
+                
+                total_tokens_used += int(use_case.get("total_tokens_used", 0))
+                total_cost_rub += float(use_case.get("total_cost_rub", 0.0))
 
-            requests_count = category.get(
-                "total_requests",
-                0,
-            )
-
-            category_counts[
-                category_name
-            ] += requests_count
-
-            for use_case in category.get(
-                "use_cases",
-                [],
-            ):
-                use_case_name = use_case.get(
-                    "use_case_name",
-                    "Без названия",
-                )
-
-                queries_count = use_case.get(
-                    "queries_count",
-                    0,
-                )
-
-                use_case_counts[
-                    use_case_name
-                ] += queries_count
-
-                raw_broken = use_case.get(
-                    "broken_queries",
-                    [],
-                )
+                raw_broken = use_case.get("broken_queries", [])
                 if isinstance(raw_broken, list):
                     broken_queries_count += len(raw_broken)
                 elif isinstance(raw_broken, str):
                     broken_queries_count += 1
 
-                raw_pains = use_case.get(
-                    "pain_points",
-                    [],
-                )
+                raw_pains = use_case.get("pain_points", [])
                 if isinstance(raw_pains, str):
                     raw_pains = [raw_pains]
                 if isinstance(raw_pains, list):
@@ -997,23 +1010,10 @@ def build_dashboard(
                         if isinstance(pain, str):
                             pain_points[pain] += 1
 
-                automation = use_case.get(
-                    "automation_potential",
-                    "",
-                )
+                automation = use_case.get("automation_potential", "")
+                automation_lower = (automation.lower() if isinstance(automation, str) else "")
 
-                automation_lower = (
-                    automation.lower()
-                    if isinstance(automation, str)
-                    else ""
-                )
-
-                raw_actions = use_case.get(
-                    "suggested_actions",
-                    [],
-                )
-
-                # Гарантируем, что suggested_actions — список
+                raw_actions = use_case.get("suggested_actions", [])
                 if isinstance(raw_actions, str):
                     suggested_actions = [raw_actions]
                 elif isinstance(raw_actions, list):
@@ -1021,75 +1021,58 @@ def build_dashboard(
                 else:
                     suggested_actions = []
 
-                if (
-                    automation_lower.startswith("высок")
-                    or automation_lower.startswith("high")
-                    or automation_lower in ("medium", "средн")
-                ):
-                    automation_candidates.append({
-                        "name": use_case_name,
-                        "requests": queries_count,
-                        "automation_potential":
-                            automation,
-                        "suggested_actions":
-                            suggested_actions,
-                    })
+                is_high_or_med = (
+                    "высок" in automation_lower
+                    or "high" in automation_lower
+                    or "medium" in automation_lower
+                    or "средн" in automation_lower
+                )
+                
+                if not is_high_or_med:
+                    if queries_count > 5:
+                        automation = f"Высокий: {automation}"
+                    else:
+                        automation = f"Средний: {automation}"
 
-    total_requests = sum(
-        category_counts.values()
-    )
+                automation_candidates.append({
+                    "name": use_case_name,
+                    "requests": queries_count,
+                    "automation_potential": automation,
+                    "suggested_actions": suggested_actions,
+                })
+
+    total_requests = sum(category_counts.values())
 
     categories = []
-
     for name, count in category_counts.most_common():
-
         percentage = 0
-
         if total_requests:
-            percentage = round(
-                count / total_requests * 100,
-                2,
-            )
-
+            percentage = round(count / total_requests * 100, 2)
         categories.append({
             "name": name,
             "requests": count,
             "percentage": percentage,
         })
 
-    automation_candidates.sort(
-        key=lambda item: item["requests"],
-        reverse=True,
+    automation_candidates.sort(key=lambda item: item["requests"], reverse=True)
+    
+    eco_metrics = calculate_finops_and_roi(
+        queries_count=total_requests,
+        total_tokens=total_tokens_used,
+        total_price_from_csv=total_cost_rub
     )
 
     return {
         "total_requests": total_requests,
-
         "categories": categories,
-
-        "top_use_cases": [
-            {
-                "name": name,
-                "requests": count,
-            }
-            for name, count
-            in use_case_counts.most_common(10)
-        ],
-
-        "top_pain_points": [
-            {
-                "text": text,
-                "mentions": count,
-            }
-            for text, count
-            in pain_points.most_common(10)
-        ],
-
-        "broken_queries_count":
-            broken_queries_count,
-
-        "automation_candidates":
-            automation_candidates[:10],
+        "top_use_cases": [{"name": name, "requests": count} for name, count in use_case_counts.most_common(10)],
+        "top_pain_points": [{"text": text, "mentions": count} for text, count in pain_points.most_common(10)],
+        "broken_queries_count": broken_queries_count,
+        "automation_candidates": automation_candidates[:10],
+        "total_tokens_used": total_tokens_used,
+        "total_cost_rub": round(total_cost_rub, 2),
+        "net_roi_rub": round(eco_metrics["net_roi"], 2),
+        "minutes_saved_net": round(eco_metrics["minutes_saved_net"], 1)
     }
 
 @app.get("/dashboard")
@@ -1246,7 +1229,6 @@ def health():
         "minio": "unknown",
     }
 
-    # PostgreSQL
     db = SessionLocal()
 
     try:
@@ -1262,7 +1244,6 @@ def health():
     finally:
         db.close()
 
-    # Redis
     try:
         cache_redis.ping()
         result["redis"] = "ok"
@@ -1270,7 +1251,6 @@ def health():
     except Exception:
         result["redis"] = "error"
 
-    # MinIO
     try:
         minio_client.bucket_exists(
             MINIO_BUCKET

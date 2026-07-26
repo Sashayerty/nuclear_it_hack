@@ -5,33 +5,36 @@ import { logout } from '../../store/slices/authSlice'
 
 const ICONS: Record<string, (active: boolean) => React.ReactNode> = {
   dashboard: (active) => (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={active ? '#ffffff' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="9" rx="1.5" />
-      <rect x="14" y="3" width="7" height="5" rx="1.5" />
-      <rect x="14" y="12" width="7" height="9" rx="1.5" />
-      <rect x="3" y="16" width="7" height="5" rx="1.5" />
-    </svg>
+    <img
+      src="/images/menu-org.svg"
+      alt="Дашборд"
+      className={`w-5 h-5 object-contain transition-all ${
+        active ? 'brightness-0 invert' : 'brightness-0 invert opacity-50 group-hover:opacity-100'
+      }`}
+    />
   ),
   datasets: (active) => (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={active ? '#ffffff' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-      <line x1="12" y1="11" x2="12" y2="17" />
-      <line x1="9" y1="14" x2="15" y2="14" />
-    </svg>
+    <img
+      src="/images/files.svg"
+      alt="Датасеты"
+      className={`w-5 h-5 object-contain transition-all ${
+        active ? 'brightness-0 invert' : 'brightness-0 invert opacity-50 group-hover:opacity-100'
+      }`}
+    />
   ),
   report: (active) => (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={active ? '#ffffff' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
-    </svg>
+    <img
+      src="/images/add-folder.svg"
+      alt="Отчёт аналитики"
+      className={`w-5 h-5 object-contain transition-all ${
+        active ? 'brightness-0 invert' : 'brightness-0 invert opacity-50 group-hover:opacity-100'
+      }`}
+    />
   ),
   admin: (active) => (
     <img
-      src="/images/menu.svg"
-      alt="Меню"
+      src="/images/menu-org.svg"
+      alt="Панель администратора"
       className={`w-5 h-5 object-contain transition-all ${
         active ? 'brightness-0 invert' : 'brightness-0 invert opacity-50 group-hover:opacity-100'
       }`}
@@ -59,17 +62,22 @@ export const Sidebar = () => {
   const activeTab = useAppSelector((state) => state.dashboard.activeTab)
   const auth = useAppSelector((state) => state.auth)
 
+  const orgName = auth.orgName || localStorage.getItem('org_name')
+  const orgAvatar = orgName
+    ? (localStorage.getItem(`org_avatar_${orgName}`) || localStorage.getItem('org_avatar') || localStorage.getItem('user_avatar'))
+    : (localStorage.getItem('org_avatar') || localStorage.getItem('user_avatar'))
+
   const navItems: { id: ActiveTab; label: string; iconKey: string }[] =
     auth.role === 'admin'
       ? [{ id: 'admin', label: 'Панель администратора', iconKey: 'admin' }]
       : [
-          { id: 'dashboard', label: 'Дашборд', iconKey: 'dashboard' },
-          { id: 'datasets', label: 'Датасеты', iconKey: 'datasets' },
-          { id: 'report', label: 'Отчёт аналитики', iconKey: 'report' }
-        ]
+        { id: 'dashboard', label: 'Дашборд', iconKey: 'dashboard' },
+        { id: 'datasets', label: 'Датасеты', iconKey: 'datasets' },
+        { id: 'report', label: 'Отчёт аналитики', iconKey: 'report' }
+      ]
 
   return (
-    <aside className="w-16 md:w-20 bg-[#18191c] text-slate-400 flex flex-col items-center justify-between py-6 shrink-0 border-r border-slate-800/60 sticky top-0 h-screen select-none">
+    <aside className="hidden md:flex w-16 md:w-20 bg-[#18191c] text-slate-400 flex-col items-center justify-between py-6 shrink-0 border-r border-slate-800/60 sticky top-0 h-screen select-none">
       <div className="flex flex-col items-center gap-8 w-full">
         <nav className="flex flex-col items-center gap-3 w-full px-2">
           {navItems.map((item) => {
@@ -80,11 +88,10 @@ export const Sidebar = () => {
                 key={item.id}
                 onClick={() => dispatch(setActiveTab(item.id))}
                 title={item.label}
-                className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all duration-200 relative group ${
-                  isActive
-                    ? 'bg-slate-800 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
+                className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all duration-200 relative group ${isActive
+                  ? 'bg-white/10  cursor-pointer text-white shadow-md'
+                  : 'text-slate-500 cursor-pointer hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
               >
                 {iconFn ? iconFn(isActive) : null}
               </button>
@@ -94,10 +101,26 @@ export const Sidebar = () => {
       </div>
 
       <div className="flex flex-col items-center gap-3 w-full px-2">
+        {orgAvatar ? (
+          <img
+            src={orgAvatar}
+            alt={orgName || 'Логотип'}
+            title={orgName || 'Логотип организации'}
+            className="w-10 h-10 rounded-full object-cover border border-slate-700/60 shadow-sm shrink-0"
+          />
+        ) : orgName ? (
+          <div
+            title={orgName}
+            className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-bold shrink-0"
+          >
+            {orgName.charAt(0).toUpperCase()}
+          </div>
+        ) : null}
+
         <button
           onClick={() => dispatch(logout())}
           title="Выйти из системы"
-          className="h-10 w-10 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors"
+          className="h-10 w-10 rounded-xl text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
         >
           {ICONS.logout(false)}
         </button>

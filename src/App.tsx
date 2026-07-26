@@ -29,10 +29,10 @@ function App() {
   }
 
   return (
-    <div className="w-full h-screen bg-[#18191c] flex font-sans selection:bg-[#7cb0f8] selection:text-[#18191c] overflow-hidden">
+    <div className="w-full h-screen bg-[#18191c] flex font-sans selection:bg-[#7cb0f8] selection:text-[#18191c] overflow-hidden relative">
       <Sidebar />
 
-      <div className="flex-1 bg-[#f4f6fa] rounded-[20px] my-2.5 mr-2.5 p-4 md:p-8 text-slate-800 flex flex-col gap-6 h-[calc(100vh-20px)] overflow-y-auto shadow-md">
+      <div className="flex-1 bg-[#F2F2F2] rounded-none md:rounded-[20px] my-0 md:my-2.5 mr-0 md:mr-2.5 p-3 sm:p-5 text-slate-800 flex flex-col gap-4 md:gap-6 h-screen md:h-[calc(100vh-20px)] overflow-y-auto shadow-md">
         <HeaderBar />
 
         <main className="w-full flex-1">

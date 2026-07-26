@@ -14,7 +14,7 @@ from models import (
     DatasetStatus,
     JobStatus,
 )
-from redis_cache import set_job_status
+from redis_cache import set_job_status, invalidate_dashboard
 from storage import MINIO_BUCKET, minio_client
 
 from back.pipeline import run_analysis_pipeline
@@ -54,7 +54,6 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
 
     print(f"[LOAD] file_format={dataset.file_format}, text_column={text_column}, file_size={len(text)} bytes")
 
-    # TXT
     if dataset.file_format == "txt":
         lines = [
             line.strip()
@@ -64,41 +63,44 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
         print(f"[LOAD] TXT: найдено {len(lines)} строк")
         return lines
 
-    # CSV
     if dataset.file_format == "csv":
         reader = csv.DictReader(
             StringIO(text)
         )
 
-        # Прочитаем первую строку, чтобы узнать имена колонок
         rows = list(reader)
         if rows:
             available_columns = list(rows[0].keys())
             print(f"[LOAD] CSV колонки: {available_columns}")
 
             if text_column not in available_columns:
-                # Автоопределение: ищем подходящую колонку
-                candidates = [
-                    c for c in available_columns
-                    if any(kw in c.lower() for kw in [
-                        "text", "query", "message", "log",
-                        "content", "question", "запрос",
-                        "сообщение", "текст", "prompt",
-                    ])
-                ]
-                if candidates:
-                    text_column = candidates[0]
-                    print(f"[LOAD] Автоопределение: используем колонку '{text_column}'")
+                exact = [c for c in available_columns if c.lower() in ["user_query", "text", "query", "message", "запрос", "сообщение"]]
+                if exact:
+                    text_column = exact[0]
+                    print(f"[LOAD] Автоопределение (точное совпадение): используем колонку '{text_column}'")
                 else:
-                    # Берём первую колонку как fallback
-                    text_column = available_columns[0]
-                    print(f"[LOAD] Fallback: используем первую колонку '{text_column}'")
+                    candidates = [
+                        c for c in available_columns
+                        if any(kw in c.lower() for kw in [
+                            "text", "query", "message", "log",
+                            "content", "question", "запрос",
+                            "сообщение", "текст", "prompt",
+                        ]) and not c.lower().endswith("id")
+                    ]
+                    if candidates:
+                        text_column = candidates[0]
+                        print(f"[LOAD] Автоопределение: используем колонку '{text_column}'")
+                    else:
+                        text_column = available_columns[0]
+                        print(f"[LOAD] Fallback: используем первую колонку '{text_column}'")
 
         logs = []
         for row in rows:
             value = row.get(text_column)
             if value:
-                logs.append(str(value))
+                log_dict = dict(row)
+                log_dict["user_query"] = str(value)
+                logs.append(log_dict)
 
         print(f"[LOAD] CSV: извлечено {len(logs)} записей")
         return logs
@@ -113,21 +115,27 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             item = json.loads(line)
 
             if text_column not in item and isinstance(item, dict):
-                candidates = [
-                    k for k in item.keys()
-                    if any(kw in k.lower() for kw in [
-                        "text", "query", "message", "log",
-                        "content", "question", "запрос",
-                        "сообщение", "текст", "prompt",
-                    ])
-                ]
-                if candidates:
-                    text_column = candidates[0]
+                exact = [k for k in item.keys() if k.lower() in ["user_query", "text", "query", "message", "запрос", "сообщение"]]
+                if exact:
+                    text_column = exact[0]
+                else:
+                    candidates = [
+                        k for k in item.keys()
+                        if any(kw in k.lower() for kw in [
+                            "text", "query", "message", "log",
+                            "content", "question", "запрос",
+                            "сообщение", "текст", "prompt",
+                        ]) and not k.lower().endswith("id")
+                    ]
+                    if candidates:
+                        text_column = candidates[0]
 
             value = item.get(text_column)
 
             if value:
-                logs.append(str(value))
+                log_dict = dict(item) if isinstance(item, dict) else {}
+                log_dict["user_query"] = str(value)
+                logs.append(log_dict)
 
         print(f"[LOAD] JSONL: извлечено {len(logs)} записей")
         return logs
@@ -147,20 +155,25 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             print(f"[LOAD] JSON ключи: {available_keys}")
 
             if text_column not in available_keys:
-                candidates = [
-                    k for k in available_keys
-                    if any(kw in k.lower() for kw in [
-                        "text", "query", "message", "log",
-                        "content", "question", "запрос",
-                        "сообщение", "текст", "prompt",
-                    ])
-                ]
-                if candidates:
-                    text_column = candidates[0]
-                    print(f"[LOAD] Автоопределение: используем ключ '{text_column}'")
+                exact = [k for k in available_keys if k.lower() in ["user_query", "text", "query", "message", "запрос", "сообщение"]]
+                if exact:
+                    text_column = exact[0]
+                    print(f"[LOAD] Автоопределение (точное совпадение): используем ключ '{text_column}'")
                 else:
-                    text_column = available_keys[0]
-                    print(f"[LOAD] Fallback: используем первый ключ '{text_column}'")
+                    candidates = [
+                        k for k in available_keys
+                        if any(kw in k.lower() for kw in [
+                            "text", "query", "message", "log",
+                            "content", "question", "запрос",
+                            "сообщение", "текст", "prompt",
+                        ]) and not k.lower().endswith("id")
+                    ]
+                    if candidates:
+                        text_column = candidates[0]
+                        print(f"[LOAD] Автоопределение: используем ключ '{text_column}'")
+                    else:
+                        text_column = available_keys[0]
+                        print(f"[LOAD] Fallback: используем первый ключ '{text_column}'")
 
         for item in data:
             if not isinstance(item, dict):
@@ -169,7 +182,9 @@ def load_logs_from_minio(dataset: Dataset) -> list[str]:
             value = item.get(text_column)
 
             if value:
-                logs.append(str(value))
+                log_dict = dict(item)
+                log_dict["user_query"] = str(value)
+                logs.append(log_dict)
 
         print(f"[LOAD] JSON: извлечено {len(logs)} записей")
         return logs
@@ -276,6 +291,8 @@ def process_dataset_analysis_task(
             "completed",
             100,
         )
+
+        invalidate_dashboard(dataset.organization_id)
 
         return {
             "dataset_id": dataset.id,

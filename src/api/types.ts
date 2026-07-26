@@ -81,6 +81,10 @@ export interface DashboardData {
     name: string
   }
   analyzed_datasets?: number
+  total_tokens_used?: number
+  total_cost_rub?: number
+  net_roi_rub?: number
+  minutes_saved_net?: number
 }
 
 export interface BrokenQueryInfo {

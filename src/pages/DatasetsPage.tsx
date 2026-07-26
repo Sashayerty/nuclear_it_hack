@@ -4,7 +4,8 @@ import {
   fetchDatasetsThunk,
   uploadDatasetThunk,
   triggerAnalysisThunk,
-  checkAnalysisStatusThunk
+  checkAnalysisStatusThunk,
+  deleteDatasetThunk
 } from '../store/slices/datasetSlice'
 import { fetchReportThunk } from '../store/slices/dashboardSlice'
 import type { Dataset } from '../api/types'
@@ -64,6 +65,12 @@ export const DatasetsPage = () => {
 
   const handleViewReport = (datasetId: number) => {
     dispatch(fetchReportThunk(datasetId))
+  }
+
+  const handleDelete = (datasetId: number) => {
+    if (window.confirm('Вы уверены, что хотите удалить этот датасет?')) {
+      dispatch(deleteDatasetThunk(datasetId))
+    }
   }
 
   const renderStatusBadge = (status: Dataset['status']) => {
@@ -184,7 +191,7 @@ export const DatasetsPage = () => {
                     </td>
                     <td className="px-5 py-4 font-mono text-slate-700">{ds.rows_count || '-'}</td>
                     <td className="px-5 py-4">{renderStatusBadge(ds.status)}</td>
-                    <td className="px-5 py-4 text-right">
+                    <td className="px-5 py-4 text-right flex items-center justify-end gap-2">
                       {ds.status === 'completed' ? (
                         <button
                           onClick={() => handleViewReport(ds.id)}
@@ -201,6 +208,13 @@ export const DatasetsPage = () => {
                           {ds.status === 'processing' ? 'Анализ...' : '🚀 Запустить'}
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDelete(ds.id)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-[6px] text-xs font-medium transition-colors"
+                        title="Удалить датасет"
+                      >
+                        🗑️
+                      </button>
                     </td>
                   </tr>
                 ))}

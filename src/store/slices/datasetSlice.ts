@@ -69,6 +69,18 @@ export const checkAnalysisStatusThunk = createAsyncThunk(
   }
 )
 
+export const deleteDatasetThunk = createAsyncThunk(
+  'dataset/deleteDataset',
+  async (datasetId: number, { rejectWithValue }) => {
+    try {
+      await apiService.deleteDataset(datasetId)
+      return datasetId
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.detail || 'Не удалось удалить датасет')
+    }
+  }
+)
+
 const datasetSlice = createSlice({
   name: 'dataset',
   initialState,
@@ -125,6 +137,12 @@ const datasetSlice = createSlice({
         if (action.payload.status === 'completed' || action.payload.status === 'failed') {
           const ds = state.datasets.find((d) => d.id === action.payload.dataset_id)
           if (ds) ds.status = action.payload.status
+        }
+      })
+      .addCase(deleteDatasetThunk.fulfilled, (state, action) => {
+        state.datasets = state.datasets.filter(d => d.id !== action.payload)
+        if (state.selectedDatasetId === action.payload) {
+          state.selectedDatasetId = null
         }
       })
   }

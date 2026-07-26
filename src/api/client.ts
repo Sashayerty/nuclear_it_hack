@@ -77,6 +77,10 @@ export const apiService = {
     return res.data
   },
 
+  async deleteDataset(datasetId: number): Promise<void> {
+    await api.delete(`/datasets/${datasetId}`)
+  },
+
   async getAnalysisStatus(analysisRunId: number): Promise<AnalysisRunStatus> {
     const res = await api.get<AnalysisRunStatus>(`/analysis-runs/${analysisRunId}`)
     return res.data

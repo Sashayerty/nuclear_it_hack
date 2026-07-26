@@ -219,14 +219,6 @@ export const AuthPage = () => {
 
                 <div className="flex items-center gap-3 mt-2">
                   <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="h-[52px] cursor-pointer px-5 border border-slate-200 hover:border-slate-300 text-slate-600 font-semibold text-xs rounded-[11px] transition-all flex items-center justify-center shrink-0"
-                  >
-                    Назад
-                  </button>
-
-                  <button
                     type="submit"
                     disabled={auth.isLoading}
                     className="flex-1 cursor-pointer h-[52px] bg-[#10c885] hover:bg-[#0eb779] active:bg-[#0ca76e] text-white font-semibold text-sm rounded-[11px] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
@@ -244,8 +236,12 @@ export const AuthPage = () => {
 
           <div className="text-center text-xs text-[#888888]/80 leading-relaxed mt-6">
             Вы входите в систему и принимаете наши условия{' '}
-            <button type="button" className="text-[#888888]/80 underline cursor-pointer font-medium">
-              Политики конфиденциальности
+            <button type="button" className="text-[#888888]/80 underline cursor-pointer=">
+              политики конфиденциальности
+            </button>{' '}
+            и {' '}
+            <button type="button" className="text-[#888888]/80 underline cursor-pointer=">
+              пользовательского соглашения
             </button>
           </div>
         </div>

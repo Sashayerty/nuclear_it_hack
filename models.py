@@ -366,11 +366,13 @@ class Dataset(Base):
     )
 
     requests: Mapped[list["Request"]] = relationship(
-        back_populates="dataset"
+        back_populates="dataset",
+        cascade="all, delete-orphan",
     )
 
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(
-        back_populates="dataset"
+        back_populates="dataset",
+        cascade="all, delete-orphan",
     )
 
 
@@ -600,15 +602,18 @@ class AnalysisRun(Base):
     )
 
     jobs: Mapped[list["AnalysisJob"]] = relationship(
-        back_populates="analysis_run"
+        back_populates="analysis_run",
+        cascade="all, delete-orphan",
     )
 
     request_analyses: Mapped[list["RequestAnalysis"]] = relationship(
-        back_populates="analysis_run"
+        back_populates="analysis_run",
+        cascade="all, delete-orphan",
     )
 
     use_cases: Mapped[list["UseCase"]] = relationship(
-        back_populates="analysis_run"
+        back_populates="analysis_run",
+        cascade="all, delete-orphan",
     )
 
 
